@@ -318,10 +318,10 @@ var { withReferer } = require_http();
 var { parseMediaAttributes, resolveFinalUrl, uniqueStreams } = require_streams();
 var TMDB_API_KEY = "439c478a771f35c05022f9feabcca01c";
 var TMDB_BASE_URL = "https://api.themoviedb.org/3";
-var MAIN_URL = "https://new1.moviesdrive.surf";
+var MAIN_URL = "https://new1.moviesdrive.christmas";
 var DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
 var DOMAIN_CACHE_TTL = 4 * 60 * 60 * 1e3;
-var domainCacheTimestamp = 0;
+var domainCacheTimestamp = Date.now();
 var HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
   "Referer": `${MAIN_URL}/`
@@ -442,32 +442,46 @@ function cleanTitle(title) {
   }
 }
 function fetchAndUpdateDomain() {
-  const now = Date.now();
-  if (now - domainCacheTimestamp < DOMAIN_CACHE_TTL) {
-    return Promise.resolve();
-  }
-  console.log("[Moviesdrive] Fetching latest domain...");
-  return fetch(DOMAINS_URL, {
-    method: "GET",
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+  return __async(this, null, function* () {
+    const now = Date.now();
+    if (now - domainCacheTimestamp < DOMAIN_CACHE_TTL) {
+      return;
     }
-  }).then(function(response) {
-    if (response.ok) {
-      return response.json().then(function(data) {
-        if (data && (data.moviesdrive || data.Moviesdrive)) {
-          const newDomain = data.moviesdrive || data.Moviesdrive;
-          if (newDomain !== MAIN_URL) {
-            console.log(`[Moviesdrive] Updating domain from ${MAIN_URL} to ${newDomain}`);
-            MAIN_URL = newDomain;
-            HEADERS.Referer = `${MAIN_URL}/`;
-            domainCacheTimestamp = now;
-          }
+    console.log("[Moviesdrive] Fetching latest domain...");
+    try {
+      const response = yield fetch(DOMAINS_URL, {
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
       });
+      if (response.ok) {
+        const data = yield response.json();
+        if (data && (data.moviesdrive || data.Moviesdrive)) {
+          const newDomain = String(data.moviesdrive || data.Moviesdrive).replace(/\/$/, "");
+          try {
+            const probe = yield fetch(`${newDomain}/search.php?q=test&page=1`, {
+              headers: { "User-Agent": HEADERS["User-Agent"] }
+            });
+            if (probe.ok && /json/i.test(probe.headers.get("content-type") || "")) {
+              if (newDomain !== MAIN_URL) {
+                console.log(`[Moviesdrive] Updating domain from ${MAIN_URL} to ${newDomain}`);
+                MAIN_URL = newDomain;
+                HEADERS.Referer = `${MAIN_URL}/`;
+              }
+            } else {
+              console.warn(`[Moviesdrive] Ignoring unavailable domain: ${newDomain}`);
+            }
+          } catch (_) {
+            console.warn(`[Moviesdrive] Ignoring unreachable domain: ${newDomain}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`[Moviesdrive] Failed to fetch latest domains: ${error.message}`);
+    } finally {
+      domainCacheTimestamp = now;
     }
-  }).catch(function(error) {
-    console.error(`[Moviesdrive] Failed to fetch latest domains: ${error.message}`);
   });
 }
 function getCurrentDomain() {
@@ -599,6 +613,29 @@ function hubCloudExtractor(url, referer) {
   if (currentUrl.includes("hubcloud.ink")) {
     currentUrl = currentUrl.replace("hubcloud.ink", "hubcloud.dad");
   }
+  if (/search-recover\.php/i.test(currentUrl)) {
+    return fetch(currentUrl, { headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: referer }) }).then((response) => __async(this, null, function* () {
+      var _a, _b;
+      const html = yield response.text();
+      const query = ((_a = html.match(/Q_INITIAL\s*=\s*"([^"]+)"/)) == null ? void 0 : _a[1]) || "";
+      const token = ((_b = html.match(/FROM_AC_TOKEN\s*=\s*"([^"]+)"/)) == null ? void 0 : _b[1]) || "";
+      if (!query || !token)
+        return [];
+      const apiUrl = new URL(response.url || currentUrl);
+      apiUrl.search = new URLSearchParams({ api: "search", q: query, page: "1", from_ac: token }).toString();
+      const apiResponse = yield fetch(apiUrl.toString(), {
+        headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: response.url || currentUrl, Accept: "application/json" })
+      });
+      const data = yield apiResponse.json();
+      const titleWords = query.toLowerCase().replace(/\b(download|19\d{2}|20\d{2}|2160p|1080p|720p|480p)\b/g, "").split(/\W+/).filter((word) => word.length > 2);
+      const hits = (data.hits || []).filter((hit) => {
+        const name = String(hit.file_name || "").toLowerCase();
+        return titleWords.length > 0 && titleWords.every((word) => name.includes(word));
+      });
+      const resolved = yield Promise.all(hits.map((hit) => loadExtractor(hit.url, apiUrl.toString()).catch(() => [])));
+      return resolved.flat();
+    })).catch(() => []);
+  }
   if (/\/(video|drive)\//i.test(currentUrl)) {
     return fetch(currentUrl, {
       headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: referer })
@@ -670,6 +707,7 @@ function hubCloudExtractor(url, referer) {
     const links = [];
     const elements = $("a.btn[href]").get();
     const processElements = elements.map((el) => {
+      var _a;
       const link2 = $(el).attr("href");
       const text = $(el).text();
       if (/telegram/i.test(text) || /telegram/i.test(link2)) {
@@ -740,46 +778,20 @@ function hubCloudExtractor(url, referer) {
         });
       }
       if (link2.includes("pixeldra")) {
-        return pixelDrainExtractor(link2).then((extracted) => {
-          links.push(...extracted.map((l) => __spreadProps(__spreadValues({}, l), {
-            quality: typeof l.quality === "number" ? l.quality : quality,
-            size: l.size || sizeInBytes2,
+        const fileId = (_a = link2.match(/(?:file|u)\/([A-Za-z0-9]+)/)) == null ? void 0 : _a[1];
+        if (fileId) {
+          links.push({
+            source: "Pixeldrain",
+            quality,
+            url: `https://pixeldrain.com/api/file/${fileId}?download`,
+            size: sizeInBytes2,
             fileName
-          })));
-        }).catch(() => {
-        });
+          });
+        }
+        return Promise.resolve();
       }
       if (text.includes("10Gbps")) {
-        let redirectUrl = link2;
-        let finalLink = null;
-        const walk = (i) => {
-          if (i >= 5)
-            return Promise.resolve(finalLink);
-          return fetch(redirectUrl, { redirect: "manual" }).then((r) => {
-            if (r.status >= 300 && r.status < 400) {
-              const loc = r.headers.get("location");
-              if (loc == null ? void 0 : loc.includes("link=")) {
-                finalLink = loc.split("link=")[1];
-                return finalLink;
-              }
-              if (loc)
-                redirectUrl = new URL(loc, redirectUrl).toString();
-              return walk(i + 1);
-            }
-            return finalLink;
-          }).catch(() => finalLink);
-        };
-        return walk(0).then((dlink) => {
-          if (dlink) {
-            links.push({
-              source: `HubCloud - 10Gbps ${labelExtras}`,
-              quality,
-              url: dlink,
-              size: sizeInBytes2,
-              fileName
-            });
-          }
-        });
+        return Promise.resolve();
       }
       return loadExtractor(link2, finalUrl).then((r) => links.push(...r));
     });
@@ -1000,7 +1012,7 @@ function loadExtractor(url, referer = MAIN_URL) {
 }
 function search(imdbId, page = 1) {
   return getCurrentDomain().then((currentDomain) => {
-    const apiUrl = `${currentDomain}/searchapi.php?q=${encodeURIComponent(imdbId)}&page=${page}`;
+    const apiUrl = `${currentDomain}/search.php?q=${encodeURIComponent(imdbId)}&page=${page}`;
     console.log(`[Moviesdrive] Searching API: ${apiUrl}`);
     return fetch(apiUrl, { headers: HEADERS });
   }).then((res) => res.json()).then((json) => {
@@ -1009,7 +1021,7 @@ function search(imdbId, page = 1) {
       console.log("[Moviesdrive] No results");
       return [];
     }
-    const results = json.hits.map((hit) => hit.document).filter((doc) => doc.imdb_id === imdbId).map((doc) => {
+    const results = json.hits.map((hit) => hit.document).filter((doc) => !/^tt\d+$/i.test(imdbId) || !doc.imdb_id || doc.imdb_id === imdbId).map((doc) => {
       var _a2;
       return {
         title: doc.post_title,
@@ -1058,6 +1070,12 @@ function getDownloadLinks(mediaUrl, season, episode) {
         });
       };
       const promises = links.map((url) => {
+        if (hosterRegex.test(url)) {
+          return loadExtractor(url, mediaUrl).catch((err) => {
+            console.error(`[Moviesdrive] Failed direct extractor ${url}:`, err.message);
+            return [];
+          });
+        }
         return extractMdrive(url).then((extractedUrls) => {
           return Promise.all(
             extractedUrls.map(
@@ -1268,73 +1286,78 @@ function getStreamsLegacy(tmdbId, mediaType = "movie", season = null, episode = 
     const searchQuery = mediaInfo.imdbId ? mediaInfo.imdbId : mediaInfo.title;
     console.log(`[Moviesdrive] Searching for: "${searchQuery}"`);
     return search(searchQuery).then(function(searchResults) {
-      if (searchResults.length === 0) {
-        console.log("[Moviesdrive] No search results found");
-        return [];
-      }
-      const bestMatch = findBestTitleMatch(mediaInfo, searchResults, mediaType, season);
-      const selectedMedia = bestMatch || searchResults[0];
-      console.log(`[Moviesdrive] Selected: "${selectedMedia.title}" (${selectedMedia.url})`);
-      return getDownloadLinks(selectedMedia.url, season, episode).then(function(result) {
-        const { finalLinks, isMovie } = result;
-        let filteredLinks = finalLinks;
-        const streams = filteredLinks.filter(function(link2) {
-          console.log("[Moviesdrive] Processing link from source:", link2.source);
-          return link2 && link2.url;
-        }).map(function(link2) {
-          let mediaTitle;
-          if (link2.fileName && link2.fileName !== "Unknown") {
-            mediaTitle = link2.fileName;
-          } else if (mediaType === "tv" && season && episode) {
-            mediaTitle = `${mediaInfo.title} S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
-          } else if (mediaInfo.year) {
-            mediaTitle = `${mediaInfo.title} (${mediaInfo.year})`;
-          } else {
-            mediaTitle = mediaInfo.title;
-          }
-          const formattedSize = formatBytes(link2.size);
-          const serverName = extractServerName(link2.source);
-          let qualityStr = "Unknown";
-          if (link2.quality >= 2160)
-            qualityStr = "2160p";
-          else if (link2.quality >= 1440)
-            qualityStr = "1440p";
-          else if (link2.quality >= 1080)
-            qualityStr = "1080p";
-          else if (link2.quality >= 720)
-            qualityStr = "720p";
-          else if (link2.quality >= 480)
-            qualityStr = "480p";
-          else if (link2.quality >= 360)
-            qualityStr = "360p";
-          else
-            qualityStr = "240p";
-          return {
-            name: `Moviesdrive ${serverName}`,
-            title: mediaTitle,
-            url: link2.url,
-            quality: qualityStr,
-            size: formattedSize,
-            headers: HEADERS,
-            provider: "Moviesdrive"
+      return __async(this, null, function* () {
+        if (searchResults.length === 0 && mediaInfo.imdbId) {
+          searchResults = yield search(mediaInfo.title);
+        }
+        if (searchResults.length === 0) {
+          console.log("[Moviesdrive] No search results found");
+          return [];
+        }
+        const bestMatch = findBestTitleMatch(mediaInfo, searchResults, mediaType, season);
+        const selectedMedia = bestMatch || searchResults[0];
+        console.log(`[Moviesdrive] Selected: "${selectedMedia.title}" (${selectedMedia.url})`);
+        return getDownloadLinks(selectedMedia.url, season, episode).then(function(result) {
+          const { finalLinks, isMovie } = result;
+          let filteredLinks = finalLinks;
+          const streams = filteredLinks.filter(function(link2) {
+            console.log("[Moviesdrive] Processing link from source:", link2.source);
+            return link2 && link2.url;
+          }).map(function(link2) {
+            let mediaTitle;
+            if (link2.fileName && link2.fileName !== "Unknown") {
+              mediaTitle = link2.fileName;
+            } else if (mediaType === "tv" && season && episode) {
+              mediaTitle = `${mediaInfo.title} S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
+            } else if (mediaInfo.year) {
+              mediaTitle = `${mediaInfo.title} (${mediaInfo.year})`;
+            } else {
+              mediaTitle = mediaInfo.title;
+            }
+            const formattedSize = formatBytes(link2.size);
+            const serverName = extractServerName(link2.source);
+            let qualityStr = "Unknown";
+            if (link2.quality >= 2160)
+              qualityStr = "2160p";
+            else if (link2.quality >= 1440)
+              qualityStr = "1440p";
+            else if (link2.quality >= 1080)
+              qualityStr = "1080p";
+            else if (link2.quality >= 720)
+              qualityStr = "720p";
+            else if (link2.quality >= 480)
+              qualityStr = "480p";
+            else if (link2.quality >= 360)
+              qualityStr = "360p";
+            else
+              qualityStr = "240p";
+            return {
+              name: `Moviesdrive ${serverName}`,
+              title: mediaTitle,
+              url: link2.url,
+              quality: qualityStr,
+              size: formattedSize,
+              headers: HEADERS,
+              provider: "Moviesdrive"
+            };
+          });
+          const qualityOrder = {
+            "2160p": 5,
+            "1440p": 4,
+            "1080p": 3,
+            "720p": 2,
+            "480p": 1,
+            "360p": 0,
+            "240p": -1,
+            "Unknown": -2
           };
+          streams.sort(function(a, b) {
+            var _a, _b;
+            return ((_a = qualityOrder[b.quality]) != null ? _a : -3) - ((_b = qualityOrder[a.quality]) != null ? _b : -3);
+          });
+          console.log(`[Moviesdrive] Found ${streams.length} streams`);
+          return streams;
         });
-        const qualityOrder = {
-          "2160p": 5,
-          "1440p": 4,
-          "1080p": 3,
-          "720p": 2,
-          "480p": 1,
-          "360p": 0,
-          "240p": -1,
-          "Unknown": -2
-        };
-        streams.sort(function(a, b) {
-          var _a, _b;
-          return ((_a = qualityOrder[b.quality]) != null ? _a : -3) - ((_b = qualityOrder[a.quality]) != null ? _b : -3);
-        });
-        console.log(`[Moviesdrive] Found ${streams.length} streams`);
-        return streams;
       });
     });
   }).catch(function(error) {
@@ -1349,25 +1372,23 @@ if (typeof module !== "undefined" && module.exports) {
 }
 function getStreams(tmdbId, mediaType = "movie", season = null, episode = null) {
   return __async(this, null, function* () {
-    var _a;
     const candidates = yield getStreamsLegacy(tmdbId, mediaType, season, episode);
-    const streams = [];
-    for (const candidate of candidates) {
+    const resolved = candidates.map((candidate) => {
+      var _a;
       const requestHeaders = withReferer(candidate.headers || HEADERS, ((_a = candidate.headers) == null ? void 0 : _a.Referer) || MAIN_URL);
-      const finalUrl = yield resolveFinalUrl(candidate.url, { headers: requestHeaders }).catch(() => null);
-      if (!finalUrl)
-        continue;
-      const attributes = parseMediaAttributes(candidate.title, candidate.name, candidate.size, finalUrl);
+      const attributes = parseMediaAttributes(candidate.title, candidate.name, candidate.size, candidate.url);
       const verifiedQuality = attributes.quality !== "Unknown" ? attributes.quality : candidate.quality;
-      streams.push(__spreadProps(__spreadValues(__spreadProps(__spreadValues({}, candidate), {
-        url: finalUrl,
+      return __spreadProps(__spreadValues(__spreadProps(__spreadValues({}, candidate), {
+        url: candidate.url,
         headers: requestHeaders,
         subtitles: candidate.subtitles || []
       }), attributes), {
+        name: candidate.name || "MoviesDrive",
+        title: candidate.title || attributes.title || "MoviesDrive",
         quality: candidate.quality === "240p" && attributes.quality === "Unknown" ? "Unknown" : verifiedQuality,
         size: candidate.size || attributes.size
-      }));
-    }
-    return uniqueStreams(streams);
+      });
+    });
+    return uniqueStreams(resolved.filter(Boolean));
   });
 }

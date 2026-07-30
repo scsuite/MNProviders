@@ -1,19 +1,19 @@
 {
   "name": "MNProviders",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "Nuvio-compatible Phisher StreamPlay port",
   "scrapers": [
     {
       "id": "StreamPlay",
       "name": "StreamPlay",
-      "description": "MoviesDrive direct links with VegaMovies and Castle fallback; sorted 4K to 480p",
-      "version": "1.0.11",
+      "description": "Fast VegaMovies and Castle sources; MoviesDrive is installed separately",
+      "version": "1.0.12",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/StreamPlay.js?v=111",
+      "filename": "providers/StreamPlay.js?v=112",
       "source": "src/providers/streamplay.js",
       "enabled": true,
       "formats": [
@@ -25,6 +25,30 @@
         "en",
         "hi",
         "ur"
+      ],
+      "supportsExternalPlayer": true
+    },
+    {
+      "id": "MoviesDrive",
+      "name": "MoviesDrive",
+      "description": "Independent MoviesDrive provider with lightweight HubCloud direct-link extraction",
+      "version": "1.0.0",
+      "author": "Phisher; Nuvio compatibility port by scsuite",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/MoviesDrive.js?v=100",
+      "source": "src/providers/moviesdrive.js",
+      "enabled": true,
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=moviesdrive.christmas&sz=128",
+      "contentLanguage": [
+        "en",
+        "hi"
       ],
       "supportsExternalPlayer": true
     }

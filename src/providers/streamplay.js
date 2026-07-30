@@ -1,9 +1,7 @@
 const { getStreams: getCastleStreams } = require('./castle');
 const { getStreams: getVegaMoviesStreams } = require('./vegamovies');
-const { getStreams: getMoviesDriveStreams } = require('./moviesdrive');
 const PROVIDER_TIMEOUTS = {
   VegaMovies: 15000,
-  MoviesDrive: 25000,
   Castle: 15000
 };
 
@@ -43,7 +41,6 @@ async function getStreams(tmdbId, mediaType, season, episode) {
   if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return Promise.resolve([]);
   const results = await Promise.all([
     withTimeout(getVegaMoviesStreams(tmdbId, mediaType, season, episode), 'VegaMovies'),
-    withTimeout(getMoviesDriveStreams(tmdbId, mediaType, season, episode), 'MoviesDrive'),
     withTimeout(getCastleStreams(tmdbId, mediaType, season, episode), 'Castle')
   ]);
   const streams = results.flat();
