@@ -1,33 +1,5 @@
 const { getStreams: getCastleStreams } = require('./castle');
 const { getStreams: getVegaMoviesStreams } = require('./vegamovies');
-const PROVIDER_TIMEOUTS = {
-  VegaMovies: 15000,
-  Castle: 15000
-};
-
-function withTimeout(promise, label) {
-  const timeoutMs = PROVIDER_TIMEOUTS[label] || 15000;
-  return new Promise(resolve => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (!settled) console.warn(`[StreamPlay] ${label} timed out after ${timeoutMs}ms`);
-      settled = true;
-      resolve([]);
-    }, timeoutMs);
-    Promise.resolve(promise).then(value => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(Array.isArray(value) ? value : []);
-    }).catch(() => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve([]);
-    });
-  });
-}
-
 function normalizeQuality(value) {
   const match = String(value || '').match(/(2160|1440|1080|720|480|360|240)/);
   if (match) return match[1] === '2160' ? '4K' : match[1] + 'p';
@@ -39,11 +11,11 @@ function normalizeQuality(value) {
 // only sources remain excluded.
 async function getStreams(tmdbId, mediaType, season, episode) {
   if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return Promise.resolve([]);
-  const results = await Promise.all([
-    withTimeout(getVegaMoviesStreams(tmdbId, mediaType, season, episode), 'VegaMovies'),
-    withTimeout(getCastleStreams(tmdbId, mediaType, season, episode), 'Castle')
+  const results = await Promise.allSettled([
+    getVegaMoviesStreams(tmdbId, mediaType, season, episode),
+    getCastleStreams(tmdbId, mediaType, season, episode)
   ]);
-  const streams = results.flat();
+  const streams = results.flatMap(result => result.status === 'fulfilled' && Array.isArray(result.value) ? result.value : []);
   return streams.map(function (stream) {
       return Object.assign({}, stream, {
         name: String(stream.name || 'Castle').replace(/^Castle/, 'StreamPlay'),
