@@ -1440,30 +1440,13 @@ if (typeof module !== 'undefined' && module.exports) {
 
 async function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) {
     const candidates = await getStreamsLegacy(tmdbId, mediaType, season, episode);
-    const resolved = await Promise.all(candidates.map(async candidate => {
+    const resolved = candidates.map(candidate => {
         const requestHeaders = withReferer(candidate.headers || HEADERS, candidate.headers?.Referer || MAIN_URL);
-        const resolution = resolveFinalUrl(candidate.url, { headers: requestHeaders }).catch(() => null);
-        const finalUrl = await new Promise(resolve => {
-            let done = false;
-            const timer = setTimeout(() => {
-                if (done) return;
-                done = true;
-                const safeDirect = /cloudflarestorage\.com|pixeldrain\.com\/api\/file|\.(?:mkv|mp4|m3u8)(?:\?|$)/i.test(candidate.url);
-                resolve(safeDirect ? candidate.url : null);
-            }, 4500);
-            resolution.then(value => {
-                if (done) return;
-                done = true;
-                clearTimeout(timer);
-                resolve(value);
-            });
-        });
-        if (!finalUrl) return null;
-        const attributes = parseMediaAttributes(candidate.title, candidate.name, candidate.size, finalUrl);
+        const attributes = parseMediaAttributes(candidate.title, candidate.name, candidate.size, candidate.url);
         const verifiedQuality = attributes.quality !== 'Unknown' ? attributes.quality : candidate.quality;
         return {
             ...candidate,
-            url: finalUrl,
+            url: candidate.url,
             headers: requestHeaders,
             subtitles: candidate.subtitles || [],
             ...attributes,
@@ -1472,6 +1455,6 @@ async function getStreams(tmdbId, mediaType = 'movie', season = null, episode = 
             quality: candidate.quality === '240p' && attributes.quality === 'Unknown' ? 'Unknown' : verifiedQuality,
             size: candidate.size || attributes.size
         };
-    }));
+    });
     return uniqueStreams(resolved.filter(Boolean));
 }
