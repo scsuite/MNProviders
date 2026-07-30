@@ -543,6 +543,7 @@ var require_vegamovies = __commonJS({
     var TMDB_API = "https://api.themoviedb.org/3";
     var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
     var DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
+    var VEGA_FALLBACK = "https://vegamovies.catering";
     var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
     function requestText(url, referer) {
       return __async(this, null, function* () {
@@ -580,10 +581,13 @@ var require_vegamovies = __commonJS({
     }
     function getVegaBase() {
       return __async(this, null, function* () {
-        const domains = JSON.parse(yield requestText(DOMAINS_URL));
-        if (!domains.vegamovies)
-          throw new Error("VegaMovies domain missing");
-        return String(domains.vegamovies).replace(/\/$/, "");
+        try {
+          const domains = JSON.parse(yield requestText(DOMAINS_URL));
+          if (domains.vegamovies)
+            return String(domains.vegamovies).replace(/\/$/, "");
+        } catch (_) {
+        }
+        return VEGA_FALLBACK;
       });
     }
     function searchVega(base, query) {
@@ -604,11 +608,17 @@ var require_vegamovies = __commonJS({
       }) || results[0];
     }
     function absoluteUrl(value, base) {
-      try {
-        return new URL(value, base).href;
-      } catch (_) {
+      if (!value)
         return null;
-      }
+      const url = String(value).trim();
+      if (/^https?:\/\//i.test(url))
+        return url;
+      const origin = String(base || "").match(/^(https?:\/\/[^/]+)/i);
+      if (!origin)
+        return null;
+      if (url.startsWith("/"))
+        return origin[1] + url;
+      return String(base).replace(/\/[^/]*$/, "/").replace(/\/$/, "/") + url.replace(/^\.\//, "");
     }
     function movieReleaseLinks(html, base) {
       const $ = cheerio.load(html);
