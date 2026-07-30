@@ -1,0 +1,36 @@
+{
+    "name": "nuvio-providers",
+    "version": "1.0.0",
+    "description": "Providers for Nuvio Streaming",
+    "scripts": {
+        "build": "node build.js",
+        "build:watch": "nodemon --watch src -e js,json --exec 'node build.js'",
+        "build:provider": "node build.js",
+        "test": "node scripts/validate.js && node tests/shared.test.js && node tests/streamplay.test.js",
+        "test:providers": "node tests/providers.live.test.js",
+        "test:animecloud": "node tests/providers.live.test.js AnimeCloud",
+        "test:animekhor": "node tests/providers.live.test.js Animekhor",
+        "test:coflix": "node tests/providers.live.test.js Coflix",
+        "test:goojara": "node tests/providers.live.test.js Goojara",
+        "test:onepace": "node tests/providers.live.test.js OnePace",
+        "test:movies-tv": "node tests/movies-tv.live.test.js",
+        "test:moviesdrive": "node tests/movies-tv.live.test.js MoviesDrive",
+        "test:fourkhdhub": "node tests/movies-tv.live.test.js FourKHDHub",
+        "test:desicinemas": "node tests/movies-tv.live.test.js Desicinemas",
+        "test:netcinez": "node tests/movies-tv.live.test.js Netcinez",
+        "test:multimovies": "node tests/movies-tv.live.test.js MultiMovies",
+        "start": "node server.js"
+    },
+    "devDependencies": {
+        "cheerio": "^1.1.2",
+        "cheerio-without-node-native": "^0.20.2",
+        "esbuild": "^0.20.2",
+        "nodemon": "^3.0.0"
+    },
+    "keywords": [
+        "nuvio",
+        "streaming",
+        "providers"
+    ],
+    "license": "GPL-3.0"
+}
