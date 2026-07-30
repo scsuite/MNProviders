@@ -1,5 +1,6 @@
 const { getStreams: getCastleStreams } = require('./castle');
 const { getStreams: getVegaMoviesStreams } = require('./vegamovies');
+const { getStreams: getMoviesDriveStreams } = require('./moviesdrive');
 
 function normalizeQuality(value) {
   const match = String(value || '').match(/(2160|1440|1080|720|480|360|240)/);
@@ -14,6 +15,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
   if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return Promise.resolve([]);
   const results = await Promise.allSettled([
     getVegaMoviesStreams(tmdbId, mediaType, season, episode),
+    getMoviesDriveStreams(tmdbId, mediaType, season, episode),
     getCastleStreams(tmdbId, mediaType, season, episode)
   ]);
   const streams = results.flatMap(result => result.status === 'fulfilled' && Array.isArray(result.value) ? result.value : []);
@@ -22,7 +24,14 @@ async function getStreams(tmdbId, mediaType, season, episode) {
         name: String(stream.name || 'Castle').replace(/^Castle/, 'StreamPlay'),
         quality: normalizeQuality(stream.quality)
       });
-    }).filter((stream, index, all) => all.findIndex(other => other.url === stream.url) === index);
+    }).filter((stream, index, all) => all.findIndex(other => other.url === stream.url) === index)
+      .sort((a, b) => qualityRank(b.quality) - qualityRank(a.quality));
+}
+
+function qualityRank(quality) {
+  const match = String(quality || '').match(/(2160|1440|1080|720|480|360|240|4K)/i);
+  if (!match) return 0;
+  return match[1].toUpperCase() === '4K' ? 2160 : Number(match[1]);
 }
 
 module.exports = { getStreams };

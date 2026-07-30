@@ -1,19 +1,19 @@
 {
   "name": "MNProviders",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Nuvio-compatible Phisher StreamPlay port",
   "scrapers": [
     {
       "id": "StreamPlay",
       "name": "StreamPlay",
-      "description": "VegaMovies (VLC-labelled progressive links and V-Cloud resolver) with Castle HLS fallback; anime/cartoon sources excluded",
-      "version": "1.0.7",
+      "description": "MoviesDrive, VegaMovies and Castle streams; sorted 4K to 480p; anime/cartoon sources excluded",
+      "version": "1.0.8",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/StreamPlay.js?v=107",
+      "filename": "providers/StreamPlay.js?v=108",
       "source": "src/providers/streamplay.js",
       "enabled": true,
       "formats": [

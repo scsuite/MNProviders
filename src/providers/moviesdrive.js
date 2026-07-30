@@ -10,7 +10,7 @@ const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
 // Moviesdrive Configuration
-let MAIN_URL = "https://new1.moviesdrive.surf";
+let MAIN_URL = "https://new1.moviesdrive.christmas";
 const DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
 const DOMAIN_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 let domainCacheTimestamp = 0;
@@ -170,35 +170,47 @@ function cleanTitle(title) {
  * Fetches the latest domain for Moviesdrive.
  * Replicates the `getDomains` function from the provider.
  */
-function fetchAndUpdateDomain() {
+async function fetchAndUpdateDomain() {
     const now = Date.now();
     if (now - domainCacheTimestamp < DOMAIN_CACHE_TTL) {
-        return Promise.resolve();
+        return;
     }
 
     console.log('[Moviesdrive] Fetching latest domain...');
-    return fetch(DOMAINS_URL, {
+    try {
+        const response = await fetch(DOMAINS_URL, {
         method: 'GET',
         headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-    }).then(function (response) {
+        });
         if (response.ok) {
-            return response.json().then(function (data) {
-                if (data && (data.moviesdrive || data.Moviesdrive)) {
-                    const newDomain = data.moviesdrive || data.Moviesdrive;
+            const data = await response.json();
+            if (data && (data.moviesdrive || data.Moviesdrive)) {
+                const newDomain = String(data.moviesdrive || data.Moviesdrive).replace(/\/$/, '');
+                try {
+                    const probe = await fetch(`${newDomain}/search.php?q=test&page=1`, {
+                        headers: { 'User-Agent': HEADERS['User-Agent'] }
+                    });
+                    if (probe.ok && /json/i.test(probe.headers.get('content-type') || '')) {
                     if (newDomain !== MAIN_URL) {
                         console.log(`[Moviesdrive] Updating domain from ${MAIN_URL} to ${newDomain}`);
                         MAIN_URL = newDomain;
                         HEADERS.Referer = `${MAIN_URL}/`;
-                        domainCacheTimestamp = now;
                     }
+                    } else {
+                        console.warn(`[Moviesdrive] Ignoring unavailable domain: ${newDomain}`);
+                    }
+                } catch (_) {
+                    console.warn(`[Moviesdrive] Ignoring unreachable domain: ${newDomain}`);
                 }
-            });
+            }
         }
-    }).catch(function (error) {
+    } catch (error) {
         console.error(`[Moviesdrive] Failed to fetch latest domains: ${error.message}`);
-    });
+    } finally {
+        domainCacheTimestamp = now;
+    }
 }
 
 /**
@@ -392,6 +404,32 @@ function hubCloudExtractor(url, referer) {
     // Replicate domain change logic from HubCloud extractor
     if (currentUrl.includes("hubcloud.ink")) {
         currentUrl = currentUrl.replace("hubcloud.ink", "hubcloud.dad");
+    }
+
+    // New HubCloud quality buttons open a search-recovery page whose results
+    // are loaded through its JSON endpoint rather than rendered as anchors.
+    if (/search-recover\.php/i.test(currentUrl)) {
+        return fetch(currentUrl, { headers: { ...HEADERS, Referer: referer } })
+            .then(async response => {
+                const html = await response.text();
+                const query = html.match(/Q_INITIAL\s*=\s*"([^"]+)"/)?.[1] || '';
+                const token = html.match(/FROM_AC_TOKEN\s*=\s*"([^"]+)"/)?.[1] || '';
+                if (!query || !token) return [];
+                const apiUrl = new URL(response.url || currentUrl);
+                apiUrl.search = new URLSearchParams({ api: 'search', q: query, page: '1', from_ac: token }).toString();
+                const apiResponse = await fetch(apiUrl.toString(), {
+                    headers: { ...HEADERS, Referer: response.url || currentUrl, Accept: 'application/json' }
+                });
+                const data = await apiResponse.json();
+                const titleWords = query.toLowerCase().replace(/\b(download|19\d{2}|20\d{2}|2160p|1080p|720p|480p)\b/g, '')
+                    .split(/\W+/).filter(word => word.length > 2);
+                const hits = (data.hits || []).filter(hit => {
+                    const name = String(hit.file_name || '').toLowerCase();
+                    return titleWords.length > 0 && titleWords.every(word => name.includes(word));
+                });
+                const resolved = await Promise.all(hits.map(hit => loadExtractor(hit.url, apiUrl.toString()).catch(() => [])));
+                return resolved.flat();
+            }).catch(() => []);
     }
 
     if (/\/(video|drive)\//i.test(currentUrl)) {
@@ -898,7 +936,7 @@ function loadExtractor(url, referer = MAIN_URL) {
 function search(imdbId, page = 1) {
     return getCurrentDomain()
         .then(currentDomain => {
-            const apiUrl = `${currentDomain}/searchapi.php?q=${encodeURIComponent(imdbId)}&page=${page}`;
+            const apiUrl = `${currentDomain}/search.php?q=${encodeURIComponent(imdbId)}&page=${page}`;
             console.log(`[Moviesdrive] Searching API: ${apiUrl}`);
             return fetch(apiUrl, { headers: HEADERS });
         })
@@ -911,7 +949,7 @@ function search(imdbId, page = 1) {
 
             const results = json.hits
                 .map(hit => hit.document)
-                .filter(doc => doc.imdb_id === imdbId)
+                .filter(doc => !/^tt\d+$/i.test(imdbId) || !doc.imdb_id || doc.imdb_id === imdbId)
                 .map(doc => ({
                     title: doc.post_title,
                     url: doc.permalink.startsWith('http')? doc.permalink: `${MAIN_URL}${doc.permalink.startsWith('/') ? '' : '/'}${doc.permalink}`,
@@ -989,6 +1027,13 @@ function getDownloadLinks(mediaUrl, season, episode) {
 
 
                 const promises = links.map(url => {
+                    // The current site links quality buttons straight to HubCloud.
+                    if (hosterRegex.test(url)) {
+                        return loadExtractor(url, mediaUrl).catch(err => {
+                            console.error(`[Moviesdrive] Failed direct extractor ${url}:`, err.message);
+                            return [];
+                        });
+                    }
                     return extractMdrive(url).then(extractedUrls => {
                         return Promise.all(
                             extractedUrls.map(serverUrl =>
@@ -1314,7 +1359,11 @@ function getStreamsLegacy(tmdbId, mediaType = 'movie', season = null, episode = 
         const searchQuery = mediaInfo.imdbId ? mediaInfo.imdbId : mediaInfo.title;
         console.log(`[Moviesdrive] Searching for: "${searchQuery}"`);
 
-        return search(searchQuery).then(function (searchResults) {
+        return search(searchQuery).then(async function (searchResults) {
+            // Some current MoviesDrive records (notably TV shows) omit IMDb IDs.
+            if (searchResults.length === 0 && mediaInfo.imdbId) {
+                searchResults = await search(mediaInfo.title);
+            }
             if (searchResults.length === 0) {
                 console.log('[Moviesdrive] No search results found');
                 return [];
@@ -1428,6 +1477,8 @@ async function getStreams(tmdbId, mediaType = 'movie', season = null, episode = 
             headers: requestHeaders,
             subtitles: candidate.subtitles || [],
             ...attributes,
+            name: candidate.name || 'MoviesDrive',
+            title: candidate.title || attributes.title || 'MoviesDrive',
             quality: candidate.quality === '240p' && attributes.quality === 'Unknown' ? 'Unknown' : verifiedQuality,
             size: candidate.size || attributes.size
         });
