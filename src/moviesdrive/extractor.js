@@ -266,7 +266,15 @@ export function sortAndUnique(streams) {
   const rank = { '4K': 2160, '1080p': 1080, '720p': 720, '480p': 480, '360p': 360, '240p': 240 };
   const order = { '4K': '01', '1080p': '02', '720p': '03', '480p': '04', '360p': '05', '240p': '06' };
   const seen = new Set();
-  return streams.filter(stream => stream && stream.url && stream.quality !== 'Unknown' && !seen.has(stream.url) && seen.add(stream.url))
+  return streams.filter(stream => {
+    if (!stream || !stream.url || stream.quality === 'Unknown') return false;
+    // The source can reuse one Pixel URL under multiple quality entries.
+    // Preserve those Phisher callbacks while still removing true duplicates.
+    const key = `${stream.quality}|${stream.source || ''}|${stream.url}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  })
     .sort((a, b) => (rank[b.quality] || 0) - (rank[a.quality] || 0))
     .map(stream => ({
       ...stream,

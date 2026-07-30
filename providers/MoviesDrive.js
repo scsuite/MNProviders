@@ -376,7 +376,15 @@ function sortAndUnique(streams) {
   const rank = { "4K": 2160, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240 };
   const order = { "4K": "01", "1080p": "02", "720p": "03", "480p": "04", "360p": "05", "240p": "06" };
   const seen = /* @__PURE__ */ new Set();
-  return streams.filter((stream) => stream && stream.url && stream.quality !== "Unknown" && !seen.has(stream.url) && seen.add(stream.url)).sort((a, b) => (rank[b.quality] || 0) - (rank[a.quality] || 0)).map((stream) => __spreadProps(__spreadValues({}, stream), {
+  return streams.filter((stream) => {
+    if (!stream || !stream.url || stream.quality === "Unknown")
+      return false;
+    const key = `${stream.quality}|${stream.source || ""}|${stream.url}`;
+    if (seen.has(key))
+      return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => (rank[b.quality] || 0) - (rank[a.quality] || 0)).map((stream) => __spreadProps(__spreadValues({}, stream), {
     name: `${order[stream.quality] || "99"} \u2022 MoviesDrive \u2022 ${stream.quality} \u2022 ${stream.source || "Direct"}`
   }));
 }
