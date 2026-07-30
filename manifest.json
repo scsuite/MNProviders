@@ -13,7 +13,7 @@
         "movie",
         "tv"
       ],
-      "filename": "providers/StreamPlay.js",
+      "filename": "providers/StreamPlay.js?v=102",
       "source": "src/providers/streamplay.js",
       "enabled": true,
       "formats": [

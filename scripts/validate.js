@@ -32,7 +32,7 @@ if (manifest) {
         continue;
       }
 
-      const providerPath = path.resolve(root, scraper.filename);
+      const providerPath = path.resolve(root, scraper.filename.split(/[?#]/, 1)[0]);
       const relative = path.relative(root, providerPath);
       if (relative.startsWith('..') || path.isAbsolute(relative)) {
         fail(`${label} filename escapes the repository: ${scraper.filename}`);
