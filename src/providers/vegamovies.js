@@ -1,5 +1,3 @@
-const cheerio = require('cheerio');
-
 const TMDB_API = 'https://api.themoviedb.org/3';
 const TMDB_KEY = '439c478a771f35c05022f9feabcca01c';
 const DOMAINS_URL = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
@@ -71,54 +69,75 @@ function absoluteUrl(value, base) {
   return String(base).replace(/\/[^/]*$/, '/').replace(/\/$/, '/') + url.replace(/^\.\//, '');
 }
 
+function cleanText(value) {
+  return String(value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function headingBlocks(html) {
+  const blocks = [];
+  const regex = /<(h[3-5])\b[^>]*>([\s\S]*?)<\/\1>([\s\S]*?)(?=<h[3-5]\b|$)/gi;
+  let match;
+  while ((match = regex.exec(html))) blocks.push({ heading: cleanText(match[2]), body: match[3] });
+  return blocks;
+}
+
+function anchors(html, base) {
+  const values = [];
+  const regex = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = regex.exec(html))) {
+    const url = absoluteUrl(match[1].replace(/&amp;/gi, '&'), base);
+    if (url) values.push({ url, text: cleanText(match[2]) });
+  }
+  return values;
+}
+
 function movieReleaseLinks(html, base) {
-  const $ = cheerio.load(html);
   const links = [];
-  $('button.dwd-button').each((_, button) => {
-    const anchor = $(button).closest('a');
-    const url = absoluteUrl(anchor.attr('href'), base);
-    if (!url) return;
-    const label = anchor.closest('p').prevAll('h3,h4,h5').first().text().replace(/\s+/g, ' ').trim();
-    links.push({ url, label });
-  });
+  for (const block of headingBlocks(html)) {
+    for (const anchor of anchors(block.body, base)) {
+      if (/nexdrive|dwd-button|download now/i.test(anchor.url + ' ' + anchor.text + ' ' + block.body)) {
+        links.push({ url: anchor.url, label: block.heading });
+      }
+    }
+  }
   return links;
 }
 
 function episodeReleaseLinks(html, base, season, episode) {
-  const $ = cheerio.load(html);
   const links = [];
   const seasonRegex = new RegExp(`season\\s*0?${season}(?:\\D|$)`, 'i');
-  $('h3,h4,h5').each((_, heading) => {
-    const label = $(heading).text().replace(/\s+/g, ' ').trim();
-    if (!seasonRegex.test(label)) return;
-    const container = $(heading).nextAll('p').first();
-    container.find('a').each((__, anchor) => {
-      const node = $(anchor);
-      const url = absoluteUrl(node.attr('href'), base);
-      if (url && /(g-?direct|v-?cloud|single|download)/i.test(node.text() + ' ' + url)) {
-        links.push({ url, label });
+  for (const block of headingBlocks(html)) {
+    if (!seasonRegex.test(block.heading)) continue;
+    for (const anchor of anchors(block.body, base)) {
+      if (/(g-?direct|v-?cloud|single|download|nexdrive)/i.test(anchor.text + ' ' + anchor.url)) {
+        links.push({ url: anchor.url, label: block.heading });
       }
-    });
-  });
+    }
+  }
   return links;
 }
 
 async function resolveGDirect(pageUrl, base, episode) {
   const page = await requestText(pageUrl, base);
-  const $ = cheerio.load(page);
   let directPage = null;
   if (episode) {
     const episodeRegex = new RegExp(`episodes?\\s*:\\s*0?${episode}(?:\\D|$)`, 'i');
-    $('h3,h4,h5').each((_, heading) => {
-      if (directPage || !episodeRegex.test($(heading).text())) return;
-      const node = $(heading).nextAll('p').first().find('a').filter((__, anchor) => /g-?direct|instant/i.test($(anchor).text())).first();
-      directPage = absoluteUrl(node.attr('href'), pageUrl);
-    });
+    for (const block of headingBlocks(page)) {
+      if (!episodeRegex.test(block.heading)) continue;
+      const anchor = anchors(block.body, pageUrl).find(item => /g-?direct|instant|fastdl/i.test(item.text + ' ' + item.url));
+      if (anchor) { directPage = anchor.url; break; }
+    }
   } else {
-    $('a').each((_, anchor) => {
-      const node = $(anchor);
-      if (!directPage && /g-?direct|instant/i.test(node.text())) directPage = absoluteUrl(node.attr('href'), pageUrl);
-    });
+    const anchor = anchors(page, pageUrl).find(item => /g-?direct|instant|fastdl/i.test(item.text + ' ' + item.url));
+    if (anchor) directPage = anchor.url;
   }
   if (!directPage) return null;
   const embed = await requestText(directPage, pageUrl);
