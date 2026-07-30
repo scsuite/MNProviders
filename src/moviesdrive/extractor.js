@@ -2,6 +2,7 @@ import cheerio from 'cheerio-without-node-native';
 import { HEADERS } from './constants.js';
 
 function absoluteUrl(value, base) {
+  if (!value || typeof value !== 'string') return null;
   try { return new URL(value, base).toString(); } catch (_) { return null; }
 }
 
@@ -96,58 +97,126 @@ export async function extractHubCloud(url, referer) {
 }
 
 async function extractGdflix(url, referer, hint = {}) {
+  const makeStream = (source, link, quality, size, pageUrl, headers = {}) => ({
+    source,
+    title: [quality, size].filter(Boolean).join(' • '),
+    url: safeUrl(link),
+    quality,
+    size,
+    headers: { ...HEADERS, Referer: pageUrl, ...headers },
+    subtitles: []
+  });
+
+  const metaRefreshUrl = (html, base) => {
+    const $ = cheerio.load(html || '');
+    const content = $('meta[http-equiv="refresh"]').first().attr('content') || '';
+    const target = content.match(/url\s*=\s*["']?([^"';]+)/i)?.[1]?.trim();
+    return target ? absoluteUrl(target, base) : null;
+  };
+
+  const extractGofile = async (link, quality, size, pageUrl) => {
+    try {
+      const id = link.match(/(?:[?&]c=|\/d\/)([a-zA-Z0-9-]+)/)?.[1];
+      if (!id) return [];
+      const account = await fetch('https://api.gofile.io/accounts', {
+        method: 'POST', headers: { ...HEADERS, Accept: 'application/json' }
+      }).then(response => response.json());
+      const token = account?.data?.token;
+      if (!token) return [];
+      const globalJs = await fetch('https://gofile.io/dist/js/global.js', { headers: HEADERS }).then(response => response.text());
+      const wt = globalJs.match(/appdata\.wt\s*=\s*["']([^"']+)/)?.[1];
+      if (!wt) return [];
+      const data = await fetch(`https://api.gofile.io/contents/${id}?wt=${encodeURIComponent(wt)}`, {
+        headers: { ...HEADERS, Accept: 'application/json', Authorization: `Bearer ${token}` }
+      }).then(response => response.json());
+      const children = Object.values(data?.data?.children || {});
+      return children.filter(file => file?.link).map(file => makeStream(
+        'GDFlix GoFile', file.link, parseQuality(file.name) === 'Unknown' ? quality : parseQuality(file.name),
+        parseSize(file.name) || size, pageUrl, { Cookie: `accountToken=${token}` }
+      ));
+    } catch (_) { return []; }
+  };
+
   try {
-    let response = await fetch(url, { headers: { ...HEADERS, Referer: referer } });
-    if (!response.ok) throw new Error(`GDFlix HTTP ${response.status}`);
-    let html = await response.text();
-    let pageUrl = response.url || url;
-    const redirect = html.match(/(?:location\.replace\(|url=)["']?([^"')>\s]+)/i)?.[1];
-    if (redirect) {
-      const next = absoluteUrl(redirect, pageUrl);
-      if (next) {
-        response = await fetch(next, { headers: { ...HEADERS, Referer: pageUrl } });
-        if (!response.ok) return [];
-        html = await response.text();
-        pageUrl = response.url || next;
+    // Phisher first resolves the meta-refresh/HTTP redirect and then scrapes the
+    // download buttons. Manual redirect keeps the Location header available in JS.
+    const first = await fetch(url, { redirect: 'manual', headers: { ...HEADERS, Referer: referer } });
+    const firstHtml = await first.text();
+    const redirected = absoluteUrl(first.headers?.get?.('location'), url) || metaRefreshUrl(firstHtml, url);
+    const id = url.match(/\/(?:w?file)\/([^/?#]+)/i)?.[1];
+    const pageCandidates = [...new Set([
+      redirected,
+      first.ok && !redirected ? (first.url || url) : null,
+      id ? `https://new3.gdflix.cfd/file/${id}` : null,
+      id ? `https://new2.gdflix.cfd/file/${id}` : null
+    ].filter(Boolean))];
+
+    const pages = await Promise.all(pageCandidates.map(async pageUrl => {
+      try {
+        if (pageUrl === (first.url || url) && first.ok && !redirected) return { html: firstHtml, pageUrl };
+        const response = await fetch(pageUrl, { headers: { ...HEADERS, Referer: url } });
+        return response.ok ? { html: await response.text(), pageUrl: response.url || pageUrl } : null;
+      } catch (_) { return null; }
+    }));
+
+    const results = [];
+    for (const page of pages.filter(Boolean)) {
+      const $ = cheerio.load(page.html);
+      const details = $('ul > li.list-group-item').text() || $('li').text() || $('title').text();
+      const detectedQuality = parseQuality(details);
+      const quality = detectedQuality === 'Unknown' ? (hint.quality || '1080p') : detectedQuality;
+      const size = parseSize(details) || hint.size;
+      const buttons = [];
+      $('div.text-center a[href], a.btn[href]').each((_, element) => {
+        buttons.push({ text: $(element).text().trim(), link: absoluteUrl($(element).attr('href'), page.pageUrl) });
+      });
+      // Retired cfd domains currently return an ad-redirect shell. Do not spend
+      // more requests on its fake markup or expose it as a CF/media result.
+      if (!/list-group-item|direct\s*dl|instant\s*dl|gofile|pixeldra|pixelserver/i.test(page.html)) continue;
+
+      for (const button of buttons) {
+        if (!button.link) continue;
+        if (/direct\s*dl/i.test(button.text)) {
+          results.push(makeStream('GDFlix Direct', button.link, quality, size, page.pageUrl));
+        } else if (/instant\s*dl/i.test(button.text)) {
+          try {
+            const instant = await fetch(button.link, { redirect: 'manual', headers: { ...HEADERS, Referer: page.pageUrl } });
+            const location = instant.headers?.get?.('location') || instant.url;
+            const direct = location?.match(/[?&]url=([^&]+)/i)?.[1];
+            const resolved = direct ? decodeURIComponent(direct) : location;
+            if (resolved && resolved !== button.link) results.push(makeStream('GDFlix Instant Download', resolved, quality, size, page.pageUrl));
+          } catch (_) {}
+        } else if (/gofile/i.test(button.text)) {
+          results.push(...await extractGofile(button.link, quality, size, page.pageUrl));
+        } else if (/pixeldra|pixelserver|\bpixel\b/i.test(button.text)) {
+          const pixelUrl = /\/download(?:[/?#]|$)/i.test(button.link)
+            ? button.link
+            : `${new URL(button.link).origin}/api/file/${button.link.split('/').filter(Boolean).pop()}?download`;
+          results.push(makeStream('GDFlix Pixeldrain', pixelUrl, quality, size, page.pageUrl));
+        }
+      }
+
+      // Phisher additionally checks wfile?type=1 and type=2 for CF mirrors.
+      const cfBase = page.pageUrl.replace('/file/', '/wfile/').replace(/\?.*$/, '');
+      const cfPages = await Promise.all(['type=1', 'type=2'].map(async query => {
+        try {
+          const cfUrl = `${cfBase}?${query}`;
+          const response = await fetch(cfUrl, { headers: { ...HEADERS, Referer: page.pageUrl } });
+          return response.ok ? { html: await response.text(), url: response.url || cfUrl } : null;
+        } catch (_) { return null; }
+      }));
+      for (const cfPage of cfPages.filter(Boolean)) {
+        const $$ = cheerio.load(cfPage.html);
+        const link = absoluteUrl($$('a.btn-success[href]').first().attr('href'), cfPage.url);
+        if (link) results.push(makeStream('GDFlix CF', link, quality, size, cfPage.url));
       }
     }
-    const $ = cheerio.load(html);
-    const header = $('li').text() || $('title').text();
-    const quality = parseQuality(header) === 'Unknown' ? hint.quality : parseQuality(header);
-    const size = parseSize(header) || hint.size;
-    const results = [];
-    $('a[href]').each((_, element) => {
-      const text = $(element).text().trim();
-      const link = absoluteUrl($(element).attr('href'), pageUrl);
-      if (!link || !/(direct|instant|index|drivebot|gofile|pixel)/i.test(text)) return;
-      // A GDFlix HTML/file page is not a playable stream. Only emit URLs that
-      // are already direct media/CDN routes; Cloudflare-blocked pages stay hidden.
-      if (!/(googleusercontent\.com|workers\.dev|r2\.dev|pixeldrain\.com\/api\/file|[?&]export=download|\.(?:mkv|mp4|m3u8)(?:[?#]|$))/i.test(link)) return;
-      results.push({
-        source: `GDFlix ${text || 'Direct'}`.trim(),
-        title: [quality, size].filter(Boolean).join(' • '),
-        url: safeUrl(link),
-        quality,
-        size,
-        headers: { ...HEADERS, Referer: pageUrl },
-        subtitles: []
-      });
-    });
     if (results.length) return results;
   } catch (_) {}
 
-  // Yoruix-compatible fallback: expose the original GDFlix page when its
-  // Cloudflare-protected direct resolver is unavailable. This is labelled as
-  // a web link so it cannot be mistaken for HubCloud's verified direct CDN.
-  return [{
-    source: 'GDFlix Web Link',
-    title: [hint.quality, hint.size].filter(Boolean).join(' • '),
-    url,
-    quality: hint.quality || '1080p',
-    size: hint.size,
-    headers: { ...HEADERS, Referer: referer },
-    subtitles: []
-  }];
+  // Phisher does not return the GDFlix HTML page as a stream. Returning an
+  // empty result here keeps Nuvio from trying to play a Cloudflare/web page.
+  return [];
 }
 
 export function extractHost(url, referer, hint = {}) {

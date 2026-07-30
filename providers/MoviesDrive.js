@@ -74,6 +74,8 @@ var TMDB_API_KEY = "439c478a771f35c05022f9feabcca01c";
 // src/moviesdrive/extractor.js
 var import_cheerio_without_node_native = __toESM(require("cheerio-without-node-native"));
 function absoluteUrl(value, base) {
+  if (!value || typeof value !== "string")
+    return null;
   try {
     return new URL(value, base).toString();
   } catch (_) {
@@ -189,59 +191,134 @@ function extractHubCloud(url, referer) {
 }
 function extractGdflix(_0, _1) {
   return __async(this, arguments, function* (url, referer, hint = {}) {
-    var _a;
+    var _a, _b, _c, _d, _e, _f;
+    const makeStream = (source, link, quality, size, pageUrl, headers = {}) => ({
+      source,
+      title: [quality, size].filter(Boolean).join(" \u2022 "),
+      url: safeUrl(link),
+      quality,
+      size,
+      headers: __spreadValues(__spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }), headers),
+      subtitles: []
+    });
+    const metaRefreshUrl = (html, base) => {
+      var _a2, _b2;
+      const $ = import_cheerio_without_node_native.default.load(html || "");
+      const content = $('meta[http-equiv="refresh"]').first().attr("content") || "";
+      const target = (_b2 = (_a2 = content.match(/url\s*=\s*["']?([^"';]+)/i)) == null ? void 0 : _a2[1]) == null ? void 0 : _b2.trim();
+      return target ? absoluteUrl(target, base) : null;
+    };
+    const extractGofile = (link, quality, size, pageUrl) => __async(this, null, function* () {
+      var _a2, _b2, _c2, _d2;
+      try {
+        const id = (_a2 = link.match(/(?:[?&]c=|\/d\/)([a-zA-Z0-9-]+)/)) == null ? void 0 : _a2[1];
+        if (!id)
+          return [];
+        const account = yield fetch("https://api.gofile.io/accounts", {
+          method: "POST",
+          headers: __spreadProps(__spreadValues({}, HEADERS), { Accept: "application/json" })
+        }).then((response) => response.json());
+        const token = (_b2 = account == null ? void 0 : account.data) == null ? void 0 : _b2.token;
+        if (!token)
+          return [];
+        const globalJs = yield fetch("https://gofile.io/dist/js/global.js", { headers: HEADERS }).then((response) => response.text());
+        const wt = (_c2 = globalJs.match(/appdata\.wt\s*=\s*["']([^"']+)/)) == null ? void 0 : _c2[1];
+        if (!wt)
+          return [];
+        const data = yield fetch(`https://api.gofile.io/contents/${id}?wt=${encodeURIComponent(wt)}`, {
+          headers: __spreadProps(__spreadValues({}, HEADERS), { Accept: "application/json", Authorization: `Bearer ${token}` })
+        }).then((response) => response.json());
+        const children = Object.values(((_d2 = data == null ? void 0 : data.data) == null ? void 0 : _d2.children) || {});
+        return children.filter((file) => file == null ? void 0 : file.link).map((file) => makeStream(
+          "GDFlix GoFile",
+          file.link,
+          parseQuality(file.name) === "Unknown" ? quality : parseQuality(file.name),
+          parseSize(file.name) || size,
+          pageUrl,
+          { Cookie: `accountToken=${token}` }
+        ));
+      } catch (_) {
+        return [];
+      }
+    });
     try {
-      let response = yield fetch(url, { headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: referer }) });
-      if (!response.ok)
-        throw new Error(`GDFlix HTTP ${response.status}`);
-      let html = yield response.text();
-      let pageUrl = response.url || url;
-      const redirect = (_a = html.match(/(?:location\.replace\(|url=)["']?([^"')>\s]+)/i)) == null ? void 0 : _a[1];
-      if (redirect) {
-        const next = absoluteUrl(redirect, pageUrl);
-        if (next) {
-          response = yield fetch(next, { headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }) });
-          if (!response.ok)
-            return [];
-          html = yield response.text();
-          pageUrl = response.url || next;
+      const first = yield fetch(url, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: referer }) });
+      const firstHtml = yield first.text();
+      const redirected = absoluteUrl((_b = (_a = first.headers) == null ? void 0 : _a.get) == null ? void 0 : _b.call(_a, "location"), url) || metaRefreshUrl(firstHtml, url);
+      const id = (_c = url.match(/\/(?:w?file)\/([^/?#]+)/i)) == null ? void 0 : _c[1];
+      const pageCandidates = [...new Set([
+        redirected,
+        first.ok && !redirected ? first.url || url : null,
+        id ? `https://new3.gdflix.cfd/file/${id}` : null,
+        id ? `https://new2.gdflix.cfd/file/${id}` : null
+      ].filter(Boolean))];
+      const pages = yield Promise.all(pageCandidates.map((pageUrl) => __async(this, null, function* () {
+        try {
+          if (pageUrl === (first.url || url) && first.ok && !redirected)
+            return { html: firstHtml, pageUrl };
+          const response = yield fetch(pageUrl, { headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: url }) });
+          return response.ok ? { html: yield response.text(), pageUrl: response.url || pageUrl } : null;
+        } catch (_) {
+          return null;
+        }
+      })));
+      const results = [];
+      for (const page of pages.filter(Boolean)) {
+        const $ = import_cheerio_without_node_native.default.load(page.html);
+        const details = $("ul > li.list-group-item").text() || $("li").text() || $("title").text();
+        const detectedQuality = parseQuality(details);
+        const quality = detectedQuality === "Unknown" ? hint.quality || "1080p" : detectedQuality;
+        const size = parseSize(details) || hint.size;
+        const buttons = [];
+        $("div.text-center a[href], a.btn[href]").each((_, element) => {
+          buttons.push({ text: $(element).text().trim(), link: absoluteUrl($(element).attr("href"), page.pageUrl) });
+        });
+        if (!/list-group-item|direct\s*dl|instant\s*dl|gofile|pixeldra|pixelserver/i.test(page.html))
+          continue;
+        for (const button of buttons) {
+          if (!button.link)
+            continue;
+          if (/direct\s*dl/i.test(button.text)) {
+            results.push(makeStream("GDFlix Direct", button.link, quality, size, page.pageUrl));
+          } else if (/instant\s*dl/i.test(button.text)) {
+            try {
+              const instant = yield fetch(button.link, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: page.pageUrl }) });
+              const location = ((_e = (_d = instant.headers) == null ? void 0 : _d.get) == null ? void 0 : _e.call(_d, "location")) || instant.url;
+              const direct = (_f = location == null ? void 0 : location.match(/[?&]url=([^&]+)/i)) == null ? void 0 : _f[1];
+              const resolved = direct ? decodeURIComponent(direct) : location;
+              if (resolved && resolved !== button.link)
+                results.push(makeStream("GDFlix Instant Download", resolved, quality, size, page.pageUrl));
+            } catch (_) {
+            }
+          } else if (/gofile/i.test(button.text)) {
+            results.push(...yield extractGofile(button.link, quality, size, page.pageUrl));
+          } else if (/pixeldra|pixelserver|\bpixel\b/i.test(button.text)) {
+            const pixelUrl = /\/download(?:[/?#]|$)/i.test(button.link) ? button.link : `${new URL(button.link).origin}/api/file/${button.link.split("/").filter(Boolean).pop()}?download`;
+            results.push(makeStream("GDFlix Pixeldrain", pixelUrl, quality, size, page.pageUrl));
+          }
+        }
+        const cfBase = page.pageUrl.replace("/file/", "/wfile/").replace(/\?.*$/, "");
+        const cfPages = yield Promise.all(["type=1", "type=2"].map((query) => __async(this, null, function* () {
+          try {
+            const cfUrl = `${cfBase}?${query}`;
+            const response = yield fetch(cfUrl, { headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: page.pageUrl }) });
+            return response.ok ? { html: yield response.text(), url: response.url || cfUrl } : null;
+          } catch (_) {
+            return null;
+          }
+        })));
+        for (const cfPage of cfPages.filter(Boolean)) {
+          const $$ = import_cheerio_without_node_native.default.load(cfPage.html);
+          const link = absoluteUrl($$("a.btn-success[href]").first().attr("href"), cfPage.url);
+          if (link)
+            results.push(makeStream("GDFlix CF", link, quality, size, cfPage.url));
         }
       }
-      const $ = import_cheerio_without_node_native.default.load(html);
-      const header = $("li").text() || $("title").text();
-      const quality = parseQuality(header) === "Unknown" ? hint.quality : parseQuality(header);
-      const size = parseSize(header) || hint.size;
-      const results = [];
-      $("a[href]").each((_, element) => {
-        const text = $(element).text().trim();
-        const link = absoluteUrl($(element).attr("href"), pageUrl);
-        if (!link || !/(direct|instant|index|drivebot|gofile|pixel)/i.test(text))
-          return;
-        if (!/(googleusercontent\.com|workers\.dev|r2\.dev|pixeldrain\.com\/api\/file|[?&]export=download|\.(?:mkv|mp4|m3u8)(?:[?#]|$))/i.test(link))
-          return;
-        results.push({
-          source: `GDFlix ${text || "Direct"}`.trim(),
-          title: [quality, size].filter(Boolean).join(" \u2022 "),
-          url: safeUrl(link),
-          quality,
-          size,
-          headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }),
-          subtitles: []
-        });
-      });
       if (results.length)
         return results;
     } catch (_) {
     }
-    return [{
-      source: "GDFlix Web Link",
-      title: [hint.quality, hint.size].filter(Boolean).join(" \u2022 "),
-      url,
-      quality: hint.quality || "1080p",
-      size: hint.size,
-      headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: referer }),
-      subtitles: []
-    }];
+    return [];
   });
 }
 function extractHost(url, referer, hint = {}) {
