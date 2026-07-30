@@ -905,6 +905,9 @@ function normalizeQuality(value) {
     return match[1] === "2160" ? "4K" : match[1] + "p";
   return "Unknown";
 }
+function qualityOrder(quality) {
+  return { "4K": "01", "1440p": "02", "1080p": "03", "720p": "04", "480p": "05", "360p": "06", "240p": "07" }[quality] || "99";
+}
 function getStreams(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
     if (!tmdbId || mediaType !== "movie" && mediaType !== "tv")
@@ -915,9 +918,13 @@ function getStreams(tmdbId, mediaType, season, episode) {
     ]);
     const streams = results.flatMap((result) => result.status === "fulfilled" && Array.isArray(result.value) ? result.value : []);
     return streams.map(function(stream) {
+      const quality = normalizeQuality(stream.quality);
+      const source = String(stream.name || stream.provider || "Direct").replace(/^(?:Castle|StreamPlay)\s*/i, "").trim() || "Direct";
       return Object.assign({}, stream, {
-        name: String(stream.name || "Castle").replace(/^Castle/, "StreamPlay"),
-        quality: normalizeQuality(stream.quality)
+        // Nuvio 0.3.2 alphabetically re-sorts stream names. The rank prefix
+        // preserves global quality order across every StreamPlay source.
+        name: `${qualityOrder(quality)} \u2022 StreamPlay \u2022 ${quality} \u2022 ${source}`,
+        quality
       });
     }).filter((stream, index, all) => all.findIndex((other) => other.url === stream.url) === index).sort((a, b) => qualityRank(b.quality) - qualityRank(a.quality));
   });

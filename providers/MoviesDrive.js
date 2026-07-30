@@ -92,6 +92,8 @@ function parseQuality(value) {
   return match ? `${match[1]}p` : "Unknown";
 }
 function safeUrl(value) {
+  if (!value)
+    return null;
   const parsed = new URL(value);
   parsed.pathname = parsed.pathname.split("/").map((segment) => {
     try {
@@ -101,6 +103,22 @@ function safeUrl(value) {
     }
   }).join("/");
   return parsed.toString();
+}
+function hubCloudServer(text, link) {
+  const value = `${text || ""} ${link || ""}`.toLowerCase();
+  if (/fslv2/.test(value))
+    return "HubCloud FSLv2";
+  if (/fsl/.test(value))
+    return "HubCloud FSL";
+  if (/s3 server/.test(value))
+    return "HubCloud S3";
+  if (/mega server/.test(value))
+    return "HubCloud Mega";
+  if (/pixeldrain/.test(value))
+    return "HubCloud Pixeldrain";
+  if (/workers\.dev|download file/.test(value))
+    return "HubCloud Direct";
+  return "HubCloud";
 }
 function expandMovieButton(url) {
   return __async(this, null, function* () {
@@ -155,7 +173,7 @@ function extractHubCloud(url, referer) {
         if (!link || !/(download file|fsl|s3 server|mega server)/i.test(text))
           return null;
         return {
-          name: `MoviesDrive - ${quality}`,
+          source: hubCloudServer(text, link),
           title: [quality, size].filter(Boolean).join(" \u2022 "),
           url: safeUrl(absoluteUrl(link, pageUrl)),
           quality,
@@ -169,10 +187,64 @@ function extractHubCloud(url, referer) {
     }
   });
 }
+function extractGdflix(url, referer) {
+  return __async(this, null, function* () {
+    var _a;
+    try {
+      let response = yield fetch(url, { headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: referer }) });
+      if (!response.ok)
+        return [];
+      let html = yield response.text();
+      let pageUrl = response.url || url;
+      const redirect = (_a = html.match(/(?:location\.replace\(|url=)["']?([^"')>\s]+)/i)) == null ? void 0 : _a[1];
+      if (redirect) {
+        const next = absoluteUrl(redirect, pageUrl);
+        if (next) {
+          response = yield fetch(next, { headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }) });
+          if (!response.ok)
+            return [];
+          html = yield response.text();
+          pageUrl = response.url || next;
+        }
+      }
+      const $ = import_cheerio_without_node_native.default.load(html);
+      const header = $("li").text() || $("title").text();
+      const quality = parseQuality(header);
+      const size = parseSize(header);
+      const results = [];
+      $("a[href]").each((_, element) => {
+        const text = $(element).text().trim();
+        const link = absoluteUrl($(element).attr("href"), pageUrl);
+        if (!link || !/(direct|instant|index|drivebot|gofile|pixel)/i.test(text))
+          return;
+        if (!/(googleusercontent\.com|workers\.dev|r2\.dev|pixeldrain\.com\/api\/file|[?&]export=download|\.(?:mkv|mp4|m3u8)(?:[?#]|$))/i.test(link))
+          return;
+        results.push({
+          source: `GDFlix ${text || "Direct"}`.trim(),
+          title: [quality, size].filter(Boolean).join(" \u2022 "),
+          url: safeUrl(link),
+          quality,
+          size,
+          headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }),
+          subtitles: []
+        });
+      });
+      return results;
+    } catch (_) {
+      return [];
+    }
+  });
+}
+function extractHost(url, referer) {
+  return /gdflix|gdlink/i.test(url) ? extractGdflix(url, referer) : extractHubCloud(url, referer);
+}
 function sortAndUnique(streams) {
   const rank = { "4K": 2160, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240 };
+  const order = { "4K": "01", "1080p": "02", "720p": "03", "480p": "04", "360p": "05", "240p": "06" };
   const seen = /* @__PURE__ */ new Set();
-  return streams.filter((stream) => stream && stream.url && stream.quality !== "Unknown" && !seen.has(stream.url) && seen.add(stream.url)).sort((a, b) => (rank[b.quality] || 0) - (rank[a.quality] || 0));
+  return streams.filter((stream) => stream && stream.url && stream.quality !== "Unknown" && !seen.has(stream.url) && seen.add(stream.url)).sort((a, b) => (rank[b.quality] || 0) - (rank[a.quality] || 0)).map((stream) => __spreadProps(__spreadValues({}, stream), {
+    name: `${order[stream.quality] || "99"} \u2022 MoviesDrive \u2022 ${stream.quality} \u2022 ${stream.source || "Direct"}`
+  }));
 }
 
 // src/moviesdrive/index.js
@@ -243,7 +315,7 @@ function episodeLinks($, episode) {
       const anchors = node.attr("href") ? [node] : node.find("a[href]").get();
       anchors.forEach((anchor) => {
         const href = $(anchor).attr("href");
-        if (href && /hubcloud/i.test(href) && !result.includes(href))
+        if (href && /(hubcloud|gdflix|gdlink)/i.test(href) && !result.includes(href))
           result.push(href);
       });
       if (/(?:Ep|Episode)\s*\d+/i.test(nodeText))
@@ -283,7 +355,7 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
         })));
         hostPages = pageResults.flat();
       }
-      const extracted = yield Promise.all([...new Set(hostPages)].map((url) => extractHubCloud(url, mediaUrl)));
+      const extracted = yield Promise.all([...new Set(hostPages)].map((url) => extractHost(url, mediaUrl)));
       return sortAndUnique(extracted.flat());
     } catch (error) {
       console.error("[MoviesDrive] Error:", error.message);

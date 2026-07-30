@@ -1,6 +1,6 @@
 import cheerio from 'cheerio-without-node-native';
 import { HEADERS, MAIN_URL, TMDB_API_KEY } from './constants.js';
-import { expandMovieButton, extractHubCloud, sortAndUnique } from './extractor.js';
+import { expandMovieButton, extractHost, sortAndUnique } from './extractor.js';
 
 function normalizeType(value) {
   return /^(tv|series|show)$/i.test(String(value || '')) ? 'tv' : 'movie';
@@ -63,7 +63,7 @@ function episodeLinks($, episode) {
       const anchors = node.attr('href') ? [node] : node.find('a[href]').get();
       anchors.forEach(anchor => {
         const href = $(anchor).attr('href');
-        if (href && /hubcloud/i.test(href) && !result.includes(href)) result.push(href);
+        if (href && /(hubcloud|gdflix|gdlink)/i.test(href) && !result.includes(href)) result.push(href);
       });
       if (/(?:Ep|Episode)\s*\d+/i.test(nodeText)) break;
       node = node.next();
@@ -97,7 +97,7 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
       }));
       hostPages = pageResults.flat();
     }
-    const extracted = await Promise.all([...new Set(hostPages)].map(url => extractHubCloud(url, mediaUrl)));
+    const extracted = await Promise.all([...new Set(hostPages)].map(url => extractHost(url, mediaUrl)));
     return sortAndUnique(extracted.flat());
   } catch (error) {
     console.error('[MoviesDrive] Error:', error.message);
