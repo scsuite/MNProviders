@@ -34,6 +34,8 @@ function hubCloudServer(text, link) {
   if (/fsl/.test(value)) return 'HubCloud FSL';
   if (/s3 server/.test(value)) return 'HubCloud S3';
   if (/mega server/.test(value)) return 'HubCloud Mega';
+  if (/pdl server/.test(value)) return 'HubCloud PDL';
+  if (/buzzserver/.test(value)) return 'HubCloud BuzzServer';
   if (/pixeldrain/.test(value)) return 'HubCloud Pixeldrain';
   if (/pixel\.|pixelserver/.test(value)) return 'HubCloud Pixel';
   if (/workers\.dev|download file/.test(value)) return 'HubCloud Direct';
@@ -99,14 +101,26 @@ export async function extractHubCloud(url, referer) {
     const buttons = $('a.btn[href]').map((_, element) => {
       const link = $(element).attr('href');
       const text = $(element).text().toLowerCase();
-      if (!link || !/(download file|fsl|s3 server|mega server)/i.test(text)) return null;
+      if (!link || !/(download file|fsl|buzzserver|pixeldra|pixelserver|pixel server|s3 server|mega server|pdl server)/i.test(text)) return null;
       return { link: absoluteUrl(link, pageUrl), text };
     }).get().filter(Boolean);
     const streams = await Promise.all(buttons.map(async button => {
       let link = button.link;
-      // video-downloads.googleusercontent.com is a download-only endpoint: it
-      // ignores Range and returns 200 + attachment, so Nuvio cannot seek/stream it.
-      if (/video-downloads\.googleusercontent\.com/i.test(link)) return null;
+      // Phisher's original Pixel path converts /u/{id} share pages into the
+      // host's direct /api/file/{id}?download endpoint without pre-validating it.
+      if (/pixeldra|pixelserver|pixel server/i.test(button.text)) {
+        try {
+          const parsed = new URL(link);
+          const id = parsed.pathname.split('/').filter(Boolean).pop();
+          if (!/download/i.test(link) && id) link = `${parsed.origin}/api/file/${id}?download`;
+        } catch (_) { return null; }
+      } else if (/buzzserver/i.test(button.text)) {
+        try {
+          const response = await fetch(link, { redirect: 'manual', headers: { ...HEADERS, Referer: pageUrl } });
+          link = absoluteUrl(response.headers?.get?.('hx-redirect') || response.headers?.get?.('location'), link);
+          if (!link) return null;
+        } catch (_) { return null; }
+      }
       return {
         source: hubCloudServer(button.text, button.link),
         title: [quality, size].filter(Boolean).join(' • '),

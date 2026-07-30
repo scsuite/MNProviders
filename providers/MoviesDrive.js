@@ -116,6 +116,10 @@ function hubCloudServer(text, link) {
     return "HubCloud S3";
   if (/mega server/.test(value))
     return "HubCloud Mega";
+  if (/pdl server/.test(value))
+    return "HubCloud PDL";
+  if (/buzzserver/.test(value))
+    return "HubCloud BuzzServer";
   if (/pixeldrain/.test(value))
     return "HubCloud Pixeldrain";
   if (/pixel\.|pixelserver/.test(value))
@@ -191,14 +195,32 @@ function extractHubCloud(url, referer) {
       const buttons = $("a.btn[href]").map((_, element) => {
         const link = $(element).attr("href");
         const text = $(element).text().toLowerCase();
-        if (!link || !/(download file|fsl|s3 server|mega server)/i.test(text))
+        if (!link || !/(download file|fsl|buzzserver|pixeldra|pixelserver|pixel server|s3 server|mega server|pdl server)/i.test(text))
           return null;
         return { link: absoluteUrl(link, pageUrl), text };
       }).get().filter(Boolean);
       const streams = yield Promise.all(buttons.map((button) => __async(this, null, function* () {
+        var _a2, _b, _c, _d;
         let link = button.link;
-        if (/video-downloads\.googleusercontent\.com/i.test(link))
-          return null;
+        if (/pixeldra|pixelserver|pixel server/i.test(button.text)) {
+          try {
+            const parsed = new URL(link);
+            const id = parsed.pathname.split("/").filter(Boolean).pop();
+            if (!/download/i.test(link) && id)
+              link = `${parsed.origin}/api/file/${id}?download`;
+          } catch (_) {
+            return null;
+          }
+        } else if (/buzzserver/i.test(button.text)) {
+          try {
+            const response2 = yield fetch(link, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }) });
+            link = absoluteUrl(((_b = (_a2 = response2.headers) == null ? void 0 : _a2.get) == null ? void 0 : _b.call(_a2, "hx-redirect")) || ((_d = (_c = response2.headers) == null ? void 0 : _c.get) == null ? void 0 : _d.call(_c, "location")), link);
+            if (!link)
+              return null;
+          } catch (_) {
+            return null;
+          }
+        }
         return {
           source: hubCloudServer(button.text, button.link),
           title: [quality, size].filter(Boolean).join(" \u2022 "),
