@@ -1,7 +1,8 @@
 const assert = require('assert');
 
 const dependencyPaths = [
-  '../src/providers/castle'
+  '../src/providers/castle',
+  '../src/providers/vegamovies'
 ];
 
 for (const dependencyPath of dependencyPaths) {

@@ -1,30 +1,66 @@
 /** StreamPlay - generated from src/providers/streamplay.js */
+var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __propIsEnum = Object.prototype.propertyIsEnumerable;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __spreadValues = (a, b) => {
+  for (var prop in b || (b = {}))
+    if (__hasOwnProp.call(b, prop))
+      __defNormalProp(a, prop, b[prop]);
+  if (__getOwnPropSymbols)
+    for (var prop of __getOwnPropSymbols(b)) {
+      if (__propIsEnum.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    }
+  return a;
+};
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
+var __async = (__this, __arguments, generator) => {
+  return new Promise((resolve, reject) => {
+    var fulfilled = (value) => {
+      try {
+        step(generator.next(value));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    var rejected = (value) => {
+      try {
+        step(generator.throw(value));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
+    step((generator = generator.apply(__this, __arguments)).next());
+  });
 };
 
 // src/providers/castle.js
 var require_castle = __commonJS({
   "src/providers/castle.js"(exports2, module2) {
     "use strict";
-    var __defProp = Object.defineProperty;
-    var __getOwnPropSymbols = Object.getOwnPropertySymbols;
-    var __hasOwnProp = Object.prototype.hasOwnProperty;
-    var __propIsEnum = Object.prototype.propertyIsEnumerable;
-    var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-    var __spreadValues = (a, b) => {
+    var __defProp2 = Object.defineProperty;
+    var __getOwnPropSymbols2 = Object.getOwnPropertySymbols;
+    var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+    var __propIsEnum2 = Object.prototype.propertyIsEnumerable;
+    var __defNormalProp2 = (obj, key, value) => key in obj ? __defProp2(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+    var __spreadValues2 = (a, b) => {
       for (var prop in b || (b = {}))
-        if (__hasOwnProp.call(b, prop))
-          __defNormalProp(a, prop, b[prop]);
-      if (__getOwnPropSymbols)
-        for (var prop of __getOwnPropSymbols(b)) {
-          if (__propIsEnum.call(b, prop))
-            __defNormalProp(a, prop, b[prop]);
+        if (__hasOwnProp2.call(b, prop))
+          __defNormalProp2(a, prop, b[prop]);
+      if (__getOwnPropSymbols2)
+        for (var prop of __getOwnPropSymbols2(b)) {
+          if (__propIsEnum2.call(b, prop))
+            __defNormalProp2(a, prop, b[prop]);
         }
       return a;
     };
-    var __async = (__this, __arguments, generator) => {
+    var __async2 = (__this, __arguments, generator) => {
       return new Promise((resolve, reject) => {
         var fulfilled = (value) => {
           try {
@@ -70,11 +106,11 @@ var require_castle = __commonJS({
       "DNT": "1"
     };
     function makeRequest(_0) {
-      return __async(this, arguments, function* (url, options = {}) {
+      return __async2(this, arguments, function* (url, options = {}) {
         try {
           const response = yield fetch(url, {
             method: options.method || "GET",
-            headers: __spreadValues(__spreadValues({}, API_HEADERS), options.headers),
+            headers: __spreadValues2(__spreadValues2({}, API_HEADERS), options.headers),
             body: options.body
           });
           if (!response.ok) {
@@ -88,7 +124,7 @@ var require_castle = __commonJS({
       });
     }
     function extractCipherFromResponse(response) {
-      return __async(this, null, function* () {
+      return __async2(this, null, function* () {
         const text = yield response.text();
         const trimmed = text.trim();
         if (!trimmed) {
@@ -111,7 +147,7 @@ var require_castle = __commonJS({
       return obj || {};
     }
     function getTMDBDetails(tmdbId, mediaType) {
-      return __async(this, null, function* () {
+      return __async2(this, null, function* () {
         const endpoint = mediaType === "tv" ? "tv" : "movie";
         const url = `${TMDB_BASE_URL}/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`;
         const response = yield makeRequest(url);
@@ -127,7 +163,7 @@ var require_castle = __commonJS({
       });
     }
     function decryptCastle(encryptedB64, securityKeyB64) {
-      return __async(this, null, function* () {
+      return __async2(this, null, function* () {
         console.log("[Castle] Starting local AES-CBC decryption...");
         try {
           const CryptoJS = require("crypto-js");
@@ -201,7 +237,7 @@ var require_castle = __commonJS({
       });
     }
     function getSecurityKey() {
-      return __async(this, null, function* () {
+      return __async2(this, null, function* () {
         console.log("[Castle] Fetching security key...");
         const url = `${CASTLE_BASE}/v0.1/system/getSecurityKey/1?channel=${CHANNEL}&clientType=${CLIENT}&lang=${LANG}`;
         const response = yield makeRequest(url);
@@ -214,7 +250,7 @@ var require_castle = __commonJS({
       });
     }
     function searchCastle(securityKey, keyword, page = 1, size = 30) {
-      return __async(this, null, function* () {
+      return __async2(this, null, function* () {
         console.log(`[Castle] Searching for: ${keyword}`);
         const params = new URLSearchParams({
           channel: CHANNEL,
@@ -234,7 +270,7 @@ var require_castle = __commonJS({
       });
     }
     function getDetails(securityKey, movieId) {
-      return __async(this, null, function* () {
+      return __async2(this, null, function* () {
         console.log(`[Castle] Fetching details for movieId: ${movieId}`);
         const url = `${CASTLE_BASE}/film-api/v1.9.9/movie?channel=${CHANNEL}&clientType=${CLIENT}&lang=${LANG}&movieId=${movieId}&packageName=${PKG}`;
         const response = yield makeRequest(url);
@@ -244,7 +280,7 @@ var require_castle = __commonJS({
       });
     }
     function getVideoV1(securityKey, movieId, episodeId, languageId, resolution = 2) {
-      return __async(this, null, function* () {
+      return __async2(this, null, function* () {
         console.log(`[Castle] Fetching video (v1) for movieId: ${movieId}, languageId: ${languageId}`);
         const url = `${CASTLE_BASE}/film-api/v2.0.1/movie/getVideo2?clientType=${CLIENT}&packageName=${PKG}&channel=${CHANNEL}&lang=${LANG}`;
         const body = {
@@ -272,7 +308,7 @@ var require_castle = __commonJS({
       });
     }
     function getVideo2(securityKey, movieId, episodeId, resolution = 2) {
-      return __async(this, null, function* () {
+      return __async2(this, null, function* () {
         console.log(`[Castle] Fetching video (v2) for movieId: ${movieId}, episodeId: ${episodeId}`);
         const url = `${CASTLE_BASE}/film-api/v2.0.1/movie/getVideo2?clientType=${CLIENT}&packageName=${PKG}&channel=${CHANNEL}&lang=${LANG}`;
         const body = {
@@ -299,7 +335,7 @@ var require_castle = __commonJS({
       });
     }
     function findCastleMovieId(securityKey, tmdbInfo) {
-      return __async(this, null, function* () {
+      return __async2(this, null, function* () {
         const searchTerm = tmdbInfo.year ? `${tmdbInfo.title} ${tmdbInfo.year}` : tmdbInfo.title;
         const searchResult = yield searchCastle(securityKey, searchTerm);
         const data = extractDataBlock(searchResult);
@@ -428,7 +464,7 @@ var require_castle = __commonJS({
       return streams;
     }
     function getStreams2(tmdbId, mediaType, seasonNum, episodeNum) {
-      return __async(this, null, function* () {
+      return __async2(this, null, function* () {
         console.log(`[Castle] Starting extraction for TMDB ID: ${tmdbId}, Type: ${mediaType}${mediaType === "tv" ? `, S:${seasonNum}E:${episodeNum}` : ""}`);
         try {
           const tmdbInfo = yield getTMDBDetails(tmdbId, mediaType);
@@ -500,8 +536,198 @@ var require_castle = __commonJS({
   }
 });
 
+// src/providers/vegamovies.js
+var require_vegamovies = __commonJS({
+  "src/providers/vegamovies.js"(exports2, module2) {
+    var cheerio = require("cheerio");
+    var TMDB_API = "https://api.themoviedb.org/3";
+    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+    var DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
+    var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
+    function requestText(url, referer) {
+      return __async(this, null, function* () {
+        let lastError;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const response = yield fetch(url, {
+              redirect: "follow",
+              headers: __spreadValues({
+                "User-Agent": USER_AGENT,
+                Accept: "text/html,application/json;q=0.9,*/*;q=0.8"
+              }, referer ? { Referer: referer } : {})
+            });
+            if (!response.ok)
+              throw new Error(`HTTP ${response.status} for ${url}`);
+            return response.text();
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw lastError;
+      });
+    }
+    function getMediaInfo(tmdbId, mediaType) {
+      return __async(this, null, function* () {
+        const endpoint = mediaType === "tv" ? "tv" : "movie";
+        const url = `${TMDB_API}/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}&append_to_response=external_ids`;
+        const data = JSON.parse(yield requestText(url));
+        return {
+          title: mediaType === "tv" ? data.name : data.title,
+          year: Number(String(mediaType === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null,
+          imdbId: data.imdb_id || data.external_ids && data.external_ids.imdb_id || null
+        };
+      });
+    }
+    function getVegaBase() {
+      return __async(this, null, function* () {
+        const domains = JSON.parse(yield requestText(DOMAINS_URL));
+        if (!domains.vegamovies)
+          throw new Error("VegaMovies domain missing");
+        return String(domains.vegamovies).replace(/\/$/, "");
+      });
+    }
+    function searchVega(base, query) {
+      return __async(this, null, function* () {
+        const data = JSON.parse(yield requestText(`${base}/search.php?q=${encodeURIComponent(query)}`, base));
+        return (data.hits || []).map((hit) => hit && hit.document).filter(Boolean);
+      });
+    }
+    function chooseResult(results, media, mediaType) {
+      const imdbMatch = results.find((item) => media.imdbId && item.imdb_id === media.imdbId);
+      if (imdbMatch)
+        return imdbMatch;
+      const title = String(media.title || "").toLowerCase();
+      const year = String(media.year || "");
+      return results.find((item) => {
+        const value = String(item.post_title || "").toLowerCase();
+        return value.includes(title) && (!year || value.includes(year)) && (mediaType !== "tv" || /season|series|episode/i.test(value));
+      }) || results[0];
+    }
+    function absoluteUrl(value, base) {
+      try {
+        return new URL(value, base).href;
+      } catch (_) {
+        return null;
+      }
+    }
+    function movieReleaseLinks(html, base) {
+      const $ = cheerio.load(html);
+      const links = [];
+      $("button.dwd-button").each((_, button) => {
+        const anchor = $(button).closest("a");
+        const url = absoluteUrl(anchor.attr("href"), base);
+        if (!url)
+          return;
+        const label = anchor.closest("p").prevAll("h3,h4,h5").first().text().replace(/\s+/g, " ").trim();
+        links.push({ url, label });
+      });
+      return links;
+    }
+    function episodeReleaseLinks(html, base, season, episode) {
+      const $ = cheerio.load(html);
+      const links = [];
+      const seasonRegex = new RegExp(`season\\s*0?${season}(?:\\D|$)`, "i");
+      $("h3,h4,h5").each((_, heading) => {
+        const label = $(heading).text().replace(/\s+/g, " ").trim();
+        if (!seasonRegex.test(label))
+          return;
+        const container = $(heading).nextAll("p").first();
+        container.find("a").each((__, anchor) => {
+          const node = $(anchor);
+          const url = absoluteUrl(node.attr("href"), base);
+          if (url && /(g-?direct|v-?cloud|single|download)/i.test(node.text() + " " + url)) {
+            links.push({ url, label });
+          }
+        });
+      });
+      return links;
+    }
+    function resolveGDirect(pageUrl, base, episode) {
+      return __async(this, null, function* () {
+        const page = yield requestText(pageUrl, base);
+        const $ = cheerio.load(page);
+        let directPage = null;
+        if (episode) {
+          const episodeRegex = new RegExp(`episodes?\\s*:\\s*0?${episode}(?:\\D|$)`, "i");
+          $("h3,h4,h5").each((_, heading) => {
+            if (directPage || !episodeRegex.test($(heading).text()))
+              return;
+            const node = $(heading).nextAll("p").first().find("a").filter((__, anchor) => /g-?direct|instant/i.test($(anchor).text())).first();
+            directPage = absoluteUrl(node.attr("href"), pageUrl);
+          });
+        } else {
+          $("a").each((_, anchor) => {
+            const node = $(anchor);
+            if (!directPage && /g-?direct|instant/i.test(node.text()))
+              directPage = absoluteUrl(node.attr("href"), pageUrl);
+          });
+        }
+        if (!directPage)
+          return null;
+        const embed = yield requestText(directPage, pageUrl);
+        const match = embed.match(/(?:var\s+reurl\s*=\s*|['"])(?:https:\/\/fastdl\.[^/]+\/dl\.php\?link=)(https:\/\/video-downloads\.googleusercontent\.com\/[^'"\s<]+)/i);
+        if (!match)
+          return null;
+        return { url: match[1].replace(/&amp;/g, "&"), referer: directPage };
+      });
+    }
+    function qualityFrom(label) {
+      const match = String(label).match(/(2160|1080|720|480|360)p?/i);
+      if (!match)
+        return "Unknown";
+      return match[1] === "2160" ? "4K" : `${match[1]}p`;
+    }
+    function getStreams2(tmdbId, mediaType, season, episode) {
+      return __async(this, null, function* () {
+        if (!tmdbId || !["movie", "tv"].includes(mediaType))
+          return [];
+        if (mediaType === "tv" && (!season || !episode))
+          return [];
+        try {
+          const [base, media] = yield Promise.all([getVegaBase(), getMediaInfo(tmdbId, mediaType)]);
+          let results = media.imdbId ? yield searchVega(base, media.imdbId) : [];
+          if (!results.length)
+            results = yield searchVega(base, media.title);
+          const result = chooseResult(results, media, mediaType);
+          if (!result || !result.permalink)
+            return [];
+          const detailUrl = absoluteUrl(result.permalink, base);
+          const detail = yield requestText(detailUrl, base);
+          const releases = mediaType === "movie" ? movieReleaseLinks(detail, base) : episodeReleaseLinks(detail, base, Number(season), Number(episode));
+          const selected = releases.slice(0, 10);
+          const resolved = yield Promise.all(selected.map((release) => __async(this, null, function* () {
+            try {
+              const direct = yield resolveGDirect(release.url, base, mediaType === "tv" ? Number(episode) : null);
+              if (!direct)
+                return null;
+              const quality = qualityFrom(release.label);
+              return {
+                name: `StreamPlay VegaMovies - ${quality}`,
+                title: mediaType === "tv" ? `${media.title} S${season}E${episode}` : media.title,
+                url: direct.url,
+                quality,
+                headers: { "User-Agent": USER_AGENT, Referer: direct.referer },
+                provider: "vegamovies",
+                subtitles: []
+              };
+            } catch (_) {
+              return null;
+            }
+          })));
+          return resolved.filter(Boolean).filter((item, index, all) => all.findIndex((other) => other.url === item.url) === index);
+        } catch (error) {
+          console.log(`[VegaMovies] ${error && error.message ? error.message : error}`);
+          return [];
+        }
+      });
+    }
+    module2.exports = { getStreams: getStreams2 };
+  }
+});
+
 // src/providers/streamplay.js
 var { getStreams: getCastleStreams } = require_castle();
+var { getStreams: getVegaMoviesStreams } = require_vegamovies();
 function normalizeQuality(value) {
   const match = String(value || "").match(/(2160|1440|1080|720|480|360|240)/);
   if (match)
@@ -509,20 +735,20 @@ function normalizeQuality(value) {
   return "Unknown";
 }
 function getStreams(tmdbId, mediaType, season, episode) {
-  if (!tmdbId || mediaType !== "movie" && mediaType !== "tv")
-    return Promise.resolve([]);
-  return getCastleStreams(tmdbId, mediaType, season, episode).then(function(streams) {
-    if (!Array.isArray(streams))
-      return [];
+  return __async(this, null, function* () {
+    if (!tmdbId || mediaType !== "movie" && mediaType !== "tv")
+      return Promise.resolve([]);
+    const results = yield Promise.allSettled([
+      getVegaMoviesStreams(tmdbId, mediaType, season, episode),
+      getCastleStreams(tmdbId, mediaType, season, episode)
+    ]);
+    const streams = results.flatMap((result) => result.status === "fulfilled" && Array.isArray(result.value) ? result.value : []);
     return streams.map(function(stream) {
       return Object.assign({}, stream, {
         name: String(stream.name || "Castle").replace(/^Castle/, "StreamPlay"),
         quality: normalizeQuality(stream.quality)
       });
-    });
-  }).catch(function(error) {
-    console.log("[StreamPlay] " + (error && error.message ? error.message : error));
-    return [];
+    }).filter((stream, index, all) => all.findIndex((other) => other.url === stream.url) === index);
   });
 }
 module.exports = { getStreams };

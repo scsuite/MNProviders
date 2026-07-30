@@ -1,6 +1,6 @@
 # MNProviders — StreamPlay for Nuvio
 
-A Nuvio-compatible StreamPlay port focused on movies and TV. Anime and cartoon-only sources are excluded. The current release has live-verified movie and TV episode streams with multi-language subtitles.
+A Nuvio-compatible StreamPlay port focused on movies and TV. Anime and cartoon-only sources are excluded. The current release includes live-verified VegaMovies progressive streams and Castle HLS fallback streams.
 
 ## Installation
 

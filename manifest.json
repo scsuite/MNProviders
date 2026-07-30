@@ -1,23 +1,24 @@
 {
   "name": "MNProviders",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Nuvio-compatible Phisher StreamPlay port",
   "scrapers": [
     {
       "id": "StreamPlay",
       "name": "StreamPlay",
-      "description": "Movies and TV streams with multi-language subtitles; anime/cartoon sources excluded",
-      "version": "1.0.3",
+      "description": "Movies and TV streams from VegaMovies and Castle; anime/cartoon sources excluded",
+      "version": "1.0.4",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/StreamPlay.js?v=103",
+      "filename": "providers/StreamPlay.js?v=104",
       "source": "src/providers/streamplay.js",
       "enabled": true,
       "formats": [
-        "hls"
+        "hls",
+        "mkv"
       ],
       "logo": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/RepoIcon.png",
       "contentLanguage": [
