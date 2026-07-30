@@ -136,10 +136,14 @@ function expandMovieButton(_0) {
         if (!query || !token)
           return [];
         const endpoint = (response.url || url).split("?")[0];
-        const params = new URLSearchParams({ api: "search", q: query, page: "1", from_ac: token });
-        const data = yield fetch(`${endpoint}?${params}`, { headers: __spreadProps(__spreadValues({}, HEADERS), { Accept: "application/json" }) }).then((r) => r.json());
+        const pageNumbers = hint.season && hint.episode ? [1, 2, 3, 4, 5] : [1];
+        const payloads = yield Promise.all(pageNumbers.map((page) => {
+          const params = new URLSearchParams({ api: "search", q: query, page: String(page), from_ac: token });
+          return fetch(`${endpoint}?${params}`, { headers: __spreadProps(__spreadValues({}, HEADERS), { Accept: "application/json" }) }).then((r) => r.json()).catch(() => ({ hits: [] }));
+        }));
+        const hits = payloads.flatMap((data) => data.hits || []);
         const words = query.toLowerCase().replace(/\b(download|19\d{2}|20\d{2}|2160p|1080p|720p|480p)\b/g, "").split(/\W+/).filter((w) => w.length > 2);
-        return (data.hits || []).filter((hit) => {
+        return hits.filter((hit) => {
           const name = String(hit.file_name || "");
           const normalized = name.toLowerCase();
           if (!words.every((word) => normalized.includes(word)) || /\.zip(?:$|\?)/i.test(name))
@@ -152,7 +156,7 @@ function expandMovieButton(_0) {
           const episodeMatch = new RegExp(`(?:e|ep|episode[ ._-]*)0?${episode}(?:\\D|$)`, "i").test(name);
           const compactMatch = new RegExp(`(?:^|\\D)${season}x0?${episode}(?:\\D|$)`, "i").test(name);
           return seasonMatch && episodeMatch || compactMatch;
-        }).map((hit) => hit.url).filter(Boolean);
+        }).map((hit) => hit.url).filter((link, index, all) => link && all.indexOf(link) === index);
       }
       const $ = import_cheerio_without_node_native.default.load(html);
       const hosts = $("a[href]").map((_, anchor) => $(anchor).attr("href")).get().filter((href) => /hubcloud/i.test(href || ""));
@@ -383,15 +387,26 @@ function getMetadata(tmdbId, mediaType) {
     return { title: mediaType === "tv" ? data.name : data.title, imdbId: (_a = data.external_ids) == null ? void 0 : _a.imdb_id };
   });
 }
-function search(metadata) {
+function coversSeason(document, season) {
+  if (!season)
+    return true;
+  const text = `${document.post_title || ""} ${document.permalink || ""}`;
+  const range = text.match(/season\s*0?(\d+)\s*[-–—]\s*0?(\d+)/i);
+  if (range && season >= Number(range[1]) && season <= Number(range[2]))
+    return true;
+  return new RegExp(`(?:season[ ._/-]*|\\bs)0?${season}(?:\\D|$)`, "i").test(text);
+}
+function search(metadata, season) {
   return __async(this, null, function* () {
     const queries = [metadata.imdbId, metadata.title].filter(Boolean);
     for (const query of queries) {
       try {
         const data = yield fetch(`${MAIN_URL}/search.php?q=${encodeURIComponent(query)}&page=1`, { headers: HEADERS }).then((r) => r.json());
         const documents = (data.hits || []).map((hit) => hit.document).filter(Boolean);
-        const exact = metadata.imdbId && documents.find((doc) => doc.imdb_id === metadata.imdbId);
-        const match = exact || documents.find((doc) => String(doc.post_title || "").toLowerCase().includes(String(metadata.title || "").toLowerCase()));
+        const exact = metadata.imdbId ? documents.filter((doc) => doc.imdb_id === metadata.imdbId) : [];
+        const titled = documents.filter((doc) => String(doc.post_title || "").toLowerCase().includes(String(metadata.title || "").toLowerCase()));
+        const candidates = exact.length ? exact : titled;
+        const match = candidates.find((doc) => coversSeason(doc, season));
         if (match)
           return `${MAIN_URL}${String(match.permalink).startsWith("/") ? "" : "/"}${match.permalink}`;
       } catch (_) {
@@ -465,7 +480,7 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
       const metadata = yield getMetadata(String(tmdbId).replace(/^tmdb:/i, ""), type);
       if (!(metadata == null ? void 0 : metadata.title))
         return [];
-      const mediaUrl = yield search(metadata);
+      const mediaUrl = yield search(metadata, type === "tv" ? seasonNumber : null);
       if (!mediaUrl)
         return [];
       const html = yield fetch(mediaUrl, { headers: HEADERS }).then((r) => r.text());

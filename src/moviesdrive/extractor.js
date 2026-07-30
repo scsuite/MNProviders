@@ -49,10 +49,15 @@ export async function expandMovieButton(url, hint = {}) {
       const token = html.match(/FROM_AC_TOKEN\s*=\s*"([^"]+)"/)?.[1];
       if (!query || !token) return [];
       const endpoint = (response.url || url).split('?')[0];
-      const params = new URLSearchParams({ api: 'search', q: query, page: '1', from_ac: token });
-      const data = await fetch(`${endpoint}?${params}`, { headers: { ...HEADERS, Accept: 'application/json' } }).then(r => r.json());
+      const pageNumbers = hint.season && hint.episode ? [1, 2, 3, 4, 5] : [1];
+      const payloads = await Promise.all(pageNumbers.map(page => {
+        const params = new URLSearchParams({ api: 'search', q: query, page: String(page), from_ac: token });
+        return fetch(`${endpoint}?${params}`, { headers: { ...HEADERS, Accept: 'application/json' } })
+          .then(r => r.json()).catch(() => ({ hits: [] }));
+      }));
+      const hits = payloads.flatMap(data => data.hits || []);
       const words = query.toLowerCase().replace(/\b(download|19\d{2}|20\d{2}|2160p|1080p|720p|480p)\b/g, '').split(/\W+/).filter(w => w.length > 2);
-      return (data.hits || []).filter(hit => {
+      return hits.filter(hit => {
         const name = String(hit.file_name || '');
         const normalized = name.toLowerCase();
         if (!words.every(word => normalized.includes(word)) || /\.zip(?:$|\?)/i.test(name)) return false;
@@ -63,7 +68,7 @@ export async function expandMovieButton(url, hint = {}) {
         const episodeMatch = new RegExp(`(?:e|ep|episode[ ._-]*)0?${episode}(?:\\D|$)`, 'i').test(name);
         const compactMatch = new RegExp(`(?:^|\\D)${season}x0?${episode}(?:\\D|$)`, 'i').test(name);
         return (seasonMatch && episodeMatch) || compactMatch;
-      }).map(hit => hit.url).filter(Boolean);
+      }).map(hit => hit.url).filter((link, index, all) => link && all.indexOf(link) === index);
     }
     const $ = cheerio.load(html);
     const hosts = $('a[href]').map((_, anchor) => $(anchor).attr('href')).get().filter(href => /hubcloud/i.test(href || ''));

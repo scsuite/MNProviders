@@ -13,14 +13,24 @@ async function getMetadata(tmdbId, mediaType) {
   return { title: mediaType === 'tv' ? data.name : data.title, imdbId: data.external_ids?.imdb_id };
 }
 
-async function search(metadata) {
+function coversSeason(document, season) {
+  if (!season) return true;
+  const text = `${document.post_title || ''} ${document.permalink || ''}`;
+  const range = text.match(/season\s*0?(\d+)\s*[-–—]\s*0?(\d+)/i);
+  if (range && season >= Number(range[1]) && season <= Number(range[2])) return true;
+  return new RegExp(`(?:season[ ._/-]*|\\bs)0?${season}(?:\\D|$)`, 'i').test(text);
+}
+
+async function search(metadata, season) {
   const queries = [metadata.imdbId, metadata.title].filter(Boolean);
   for (const query of queries) {
     try {
       const data = await fetch(`${MAIN_URL}/search.php?q=${encodeURIComponent(query)}&page=1`, { headers: HEADERS }).then(r => r.json());
       const documents = (data.hits || []).map(hit => hit.document).filter(Boolean);
-      const exact = metadata.imdbId && documents.find(doc => doc.imdb_id === metadata.imdbId);
-      const match = exact || documents.find(doc => String(doc.post_title || '').toLowerCase().includes(String(metadata.title || '').toLowerCase()));
+      const exact = metadata.imdbId ? documents.filter(doc => doc.imdb_id === metadata.imdbId) : [];
+      const titled = documents.filter(doc => String(doc.post_title || '').toLowerCase().includes(String(metadata.title || '').toLowerCase()));
+      const candidates = exact.length ? exact : titled;
+      const match = candidates.find(doc => coversSeason(doc, season));
       if (match) return `${MAIN_URL}${String(match.permalink).startsWith('/') ? '' : '/'}${match.permalink}`;
     } catch (_) {}
   }
@@ -91,7 +101,7 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
     const episodeNumber = Number(episode) || 1;
     const metadata = await getMetadata(String(tmdbId).replace(/^tmdb:/i, ''), type);
     if (!metadata?.title) return [];
-    const mediaUrl = await search(metadata);
+    const mediaUrl = await search(metadata, type === 'tv' ? seasonNumber : null);
     if (!mediaUrl) return [];
     const html = await fetch(mediaUrl, { headers: HEADERS }).then(r => r.text());
     const $ = cheerio.load(html);
