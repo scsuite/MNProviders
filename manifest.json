@@ -1,6 +1,6 @@
 {
   "name": "MNProviders",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "description": "Nuvio-compatible Phisher StreamPlay port",
   "scrapers": [
     {
@@ -32,13 +32,13 @@
       "id": "MoviesDrive",
       "name": "MoviesDrive",
       "description": "Independent MoviesDrive provider with lightweight HubCloud direct-link extraction",
-      "version": "2.0.2",
+      "version": "2.0.3",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/MoviesDrive.js?v=202",
+      "filename": "providers/MoviesDrive.js?v=203",
       "source": "src/moviesdrive/index.js",
       "enabled": true,
       "formats": [

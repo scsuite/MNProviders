@@ -55,7 +55,13 @@ function episodeLinks($, episode) {
   const result = [];
   const pattern = new RegExp(`(?:Ep|Episode)\\s*0?${episode}(?:\\D|$)`, 'i');
   $('h5').each((_, heading) => {
-    if (!pattern.test($(heading).text())) return;
+    const headingText = $(heading).text();
+    if (!pattern.test(headingText)) return;
+    const qualityMatch = headingText.match(/\b(1080|720|480|360|240)p?\b/i);
+    const quality = /(?:2160p?|4k)/i.test(headingText)
+      ? '4K'
+      : qualityMatch ? `${qualityMatch[1]}p` : 'Unknown';
+    const size = headingText.match(/([\d.]+)\s*(GB|MB)/i)?.[0];
     let node = $(heading).next();
     let traversed = 0;
     while (node.length && traversed++ < 100) {
@@ -63,7 +69,9 @@ function episodeLinks($, episode) {
       const anchors = node.attr('href') ? [node] : node.find('a[href]').get();
       anchors.forEach(anchor => {
         const href = $(anchor).attr('href');
-        if (href && /(hubcloud|gdflix|gdlink)/i.test(href) && !result.includes(href)) result.push(href);
+        if (href && /(hubcloud|gdflix|gdlink)/i.test(href) && !result.some(item => item.url === href)) {
+          result.push({ url: href, quality, size });
+        }
       });
       if (/(?:Ep|Episode)\s*\d+/i.test(nodeText)) break;
       node = node.next();
@@ -92,12 +100,20 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
       const pageResults = await Promise.all(pages.map(async page => {
         try {
           const episodeHtml = await fetch(page, { headers: HEADERS }).then(r => r.text());
-          return episodeLinks(cheerio.load(episodeHtml), episodeNumber);
+          return episodeLinks(cheerio.load(episodeHtml), episodeNumber).map(item => ({ ...item, referer: page }));
         } catch (_) { return []; }
       }));
       hostPages = pageResults.flat();
     }
-    const extracted = await Promise.all([...new Set(hostPages)].map(url => extractHost(url, mediaUrl)));
+    const uniqueHosts = hostPages.filter((item, index, all) => {
+      const url = typeof item === 'string' ? item : item.url;
+      return all.findIndex(other => (typeof other === 'string' ? other : other.url) === url) === index;
+    });
+    const extracted = await Promise.all(uniqueHosts.map(item => {
+      const hint = typeof item === 'string' ? {} : item;
+      const url = typeof item === 'string' ? item : item.url;
+      return extractHost(url, hint.referer || mediaUrl, hint);
+    }));
     return sortAndUnique(extracted.flat());
   } catch (error) {
     console.error('[MoviesDrive] Error:', error.message);

@@ -95,10 +95,10 @@ export async function extractHubCloud(url, referer) {
   } catch (_) { return []; }
 }
 
-async function extractGdflix(url, referer) {
+async function extractGdflix(url, referer, hint = {}) {
   try {
     let response = await fetch(url, { headers: { ...HEADERS, Referer: referer } });
-    if (!response.ok) return [];
+    if (!response.ok) throw new Error(`GDFlix HTTP ${response.status}`);
     let html = await response.text();
     let pageUrl = response.url || url;
     const redirect = html.match(/(?:location\.replace\(|url=)["']?([^"')>\s]+)/i)?.[1];
@@ -113,8 +113,8 @@ async function extractGdflix(url, referer) {
     }
     const $ = cheerio.load(html);
     const header = $('li').text() || $('title').text();
-    const quality = parseQuality(header);
-    const size = parseSize(header);
+    const quality = parseQuality(header) === 'Unknown' ? hint.quality : parseQuality(header);
+    const size = parseSize(header) || hint.size;
     const results = [];
     $('a[href]').each((_, element) => {
       const text = $(element).text().trim();
@@ -133,12 +133,25 @@ async function extractGdflix(url, referer) {
         subtitles: []
       });
     });
-    return results;
-  } catch (_) { return []; }
+    if (results.length) return results;
+  } catch (_) {}
+
+  // Yoruix-compatible fallback: expose the original GDFlix page when its
+  // Cloudflare-protected direct resolver is unavailable. This is labelled as
+  // a web link so it cannot be mistaken for HubCloud's verified direct CDN.
+  return [{
+    source: 'GDFlix Web Link',
+    title: [hint.quality, hint.size].filter(Boolean).join(' • '),
+    url,
+    quality: hint.quality || '1080p',
+    size: hint.size,
+    headers: { ...HEADERS, Referer: referer },
+    subtitles: []
+  }];
 }
 
-export function extractHost(url, referer) {
-  return /gdflix|gdlink/i.test(url) ? extractGdflix(url, referer) : extractHubCloud(url, referer);
+export function extractHost(url, referer, hint = {}) {
+  return /gdflix|gdlink/i.test(url) ? extractGdflix(url, referer, hint) : extractHubCloud(url, referer);
 }
 
 export function sortAndUnique(streams) {
