@@ -13,7 +13,9 @@ const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 let MAIN_URL = "https://new1.moviesdrive.christmas";
 const DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
 const DOMAIN_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
-let domainCacheTimestamp = 0;
+// The upstream domain list currently points to an unreachable host. Start with
+// the verified domain and only refresh it after the cache window.
+let domainCacheTimestamp = Date.now();
 
 const HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
@@ -599,51 +601,25 @@ function hubCloudExtractor(url, referer) {
                 }
 
                 if (link.includes("pixeldra")) {
-                    return pixelDrainExtractor(link)
-                        .then(extracted => {
-                            links.push(...extracted.map(l => ({
-                                ...l,
-                                quality: typeof l.quality === 'number' ? l.quality : quality,
-                                size: l.size || sizeInBytes,
-                                fileName
-                            })));
-                        })
-                        .catch(() => { });
+                    // Do not block the whole provider on Pixeldrain's metadata
+                    // endpoint; the file ID already gives us its direct URL.
+                    const fileId = link.match(/(?:file|u)\/([A-Za-z0-9]+)/)?.[1];
+                    if (fileId) {
+                        links.push({
+                            source: 'Pixeldrain',
+                            quality,
+                            url: `https://pixeldrain.com/api/file/${fileId}?download`,
+                            size: sizeInBytes,
+                            fileName
+                        });
+                    }
+                    return Promise.resolve();
                 }
 
                 if (text.includes("10Gbps")) {
-                    let redirectUrl = link;
-                    let finalLink = null;
-
-                    const walk = (i) => {
-                        if (i >= 5) return Promise.resolve(finalLink);
-                        return fetch(redirectUrl, { redirect: 'manual' })
-                            .then(r => {
-                                if (r.status >= 300 && r.status < 400) {
-                                    const loc = r.headers.get('location');
-                                    if (loc?.includes("link=")) {
-                                        finalLink = loc.split("link=")[1];
-                                        return finalLink;
-                                    }
-                                    if (loc) redirectUrl = new URL(loc, redirectUrl).toString();
-                                    return walk(i + 1);
-                                }
-                                return finalLink;
-                            })
-                            .catch(() => finalLink);
-                    };
-
-                    return walk(0).then(dlink => {
-                        if (dlink) {
-                            links.push({
-                                source: `HubCloud - 10Gbps ${labelExtras}`,
-                                quality,
-                                url: dlink,
-                                size: sizeInBytes,
-                                fileName
-                            });
-                        }
-                    });
+                    // This server requires a slow redirect chain. FSL/S3 and
+                    // Pixeldrain alternatives from the same card are faster.
+                    return Promise.resolve();
                 }
 
                 return loadExtractor(link, finalUrl).then(r => links.push(...r));
@@ -1464,14 +1440,28 @@ if (typeof module !== 'undefined' && module.exports) {
 
 async function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) {
     const candidates = await getStreamsLegacy(tmdbId, mediaType, season, episode);
-    const streams = [];
-    for (const candidate of candidates) {
+    const resolved = await Promise.all(candidates.map(async candidate => {
         const requestHeaders = withReferer(candidate.headers || HEADERS, candidate.headers?.Referer || MAIN_URL);
-        const finalUrl = await resolveFinalUrl(candidate.url, { headers: requestHeaders }).catch(() => null);
-        if (!finalUrl) continue;
+        const resolution = resolveFinalUrl(candidate.url, { headers: requestHeaders }).catch(() => null);
+        const finalUrl = await new Promise(resolve => {
+            let done = false;
+            const timer = setTimeout(() => {
+                if (done) return;
+                done = true;
+                const safeDirect = /cloudflarestorage\.com|pixeldrain\.com\/api\/file|\.(?:mkv|mp4|m3u8)(?:\?|$)/i.test(candidate.url);
+                resolve(safeDirect ? candidate.url : null);
+            }, 4500);
+            resolution.then(value => {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                resolve(value);
+            });
+        });
+        if (!finalUrl) return null;
         const attributes = parseMediaAttributes(candidate.title, candidate.name, candidate.size, finalUrl);
         const verifiedQuality = attributes.quality !== 'Unknown' ? attributes.quality : candidate.quality;
-        streams.push({
+        return {
             ...candidate,
             url: finalUrl,
             headers: requestHeaders,
@@ -1481,7 +1471,7 @@ async function getStreams(tmdbId, mediaType = 'movie', season = null, episode = 
             title: candidate.title || attributes.title || 'MoviesDrive',
             quality: candidate.quality === '240p' && attributes.quality === 'Unknown' ? 'Unknown' : verifiedQuality,
             size: candidate.size || attributes.size
-        });
-    }
-    return uniqueStreams(streams);
+        };
+    }));
+    return uniqueStreams(resolved.filter(Boolean));
 }

@@ -1,6 +1,29 @@
 const { getStreams: getCastleStreams } = require('./castle');
 const { getStreams: getVegaMoviesStreams } = require('./vegamovies');
 const { getStreams: getMoviesDriveStreams } = require('./moviesdrive');
+const PROVIDER_TIMEOUT_MS = 15000;
+
+function withTimeout(promise, label) {
+  return new Promise(resolve => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) console.warn(`[StreamPlay] ${label} timed out after ${PROVIDER_TIMEOUT_MS}ms`);
+      settled = true;
+      resolve([]);
+    }, PROVIDER_TIMEOUT_MS);
+    Promise.resolve(promise).then(value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(Array.isArray(value) ? value : []);
+    }).catch(() => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve([]);
+    });
+  });
+}
 
 function normalizeQuality(value) {
   const match = String(value || '').match(/(2160|1440|1080|720|480|360|240)/);
@@ -13,12 +36,12 @@ function normalizeQuality(value) {
 // only sources remain excluded.
 async function getStreams(tmdbId, mediaType, season, episode) {
   if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return Promise.resolve([]);
-  const results = await Promise.allSettled([
-    getVegaMoviesStreams(tmdbId, mediaType, season, episode),
-    getMoviesDriveStreams(tmdbId, mediaType, season, episode),
-    getCastleStreams(tmdbId, mediaType, season, episode)
+  const results = await Promise.all([
+    withTimeout(getVegaMoviesStreams(tmdbId, mediaType, season, episode), 'VegaMovies'),
+    withTimeout(getMoviesDriveStreams(tmdbId, mediaType, season, episode), 'MoviesDrive'),
+    withTimeout(getCastleStreams(tmdbId, mediaType, season, episode), 'Castle')
   ]);
-  const streams = results.flatMap(result => result.status === 'fulfilled' && Array.isArray(result.value) ? result.value : []);
+  const streams = results.flat();
   return streams.map(function (stream) {
       return Object.assign({}, stream, {
         name: String(stream.name || 'Castle').replace(/^Castle/, 'StreamPlay'),

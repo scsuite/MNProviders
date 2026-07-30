@@ -1176,7 +1176,7 @@ var require_moviesdrive = __commonJS({
     var MAIN_URL = "https://new1.moviesdrive.christmas";
     var DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
     var DOMAIN_CACHE_TTL = 4 * 60 * 60 * 1e3;
-    var domainCacheTimestamp = 0;
+    var domainCacheTimestamp = Date.now();
     var HEADERS = {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
       "Referer": `${MAIN_URL}/`
@@ -1562,6 +1562,7 @@ var require_moviesdrive = __commonJS({
         const links = [];
         const elements = $("a.btn[href]").get();
         const processElements = elements.map((el) => {
+          var _a;
           const link2 = $(el).attr("href");
           const text = $(el).text();
           if (/telegram/i.test(text) || /telegram/i.test(link2)) {
@@ -1632,46 +1633,20 @@ var require_moviesdrive = __commonJS({
             });
           }
           if (link2.includes("pixeldra")) {
-            return pixelDrainExtractor(link2).then((extracted) => {
-              links.push(...extracted.map((l) => __spreadProps(__spreadValues({}, l), {
-                quality: typeof l.quality === "number" ? l.quality : quality,
-                size: l.size || sizeInBytes2,
+            const fileId = (_a = link2.match(/(?:file|u)\/([A-Za-z0-9]+)/)) == null ? void 0 : _a[1];
+            if (fileId) {
+              links.push({
+                source: "Pixeldrain",
+                quality,
+                url: `https://pixeldrain.com/api/file/${fileId}?download`,
+                size: sizeInBytes2,
                 fileName
-              })));
-            }).catch(() => {
-            });
+              });
+            }
+            return Promise.resolve();
           }
           if (text.includes("10Gbps")) {
-            let redirectUrl = link2;
-            let finalLink = null;
-            const walk = (i) => {
-              if (i >= 5)
-                return Promise.resolve(finalLink);
-              return fetch(redirectUrl, { redirect: "manual" }).then((r) => {
-                if (r.status >= 300 && r.status < 400) {
-                  const loc = r.headers.get("location");
-                  if (loc == null ? void 0 : loc.includes("link=")) {
-                    finalLink = loc.split("link=")[1];
-                    return finalLink;
-                  }
-                  if (loc)
-                    redirectUrl = new URL(loc, redirectUrl).toString();
-                  return walk(i + 1);
-                }
-                return finalLink;
-              }).catch(() => finalLink);
-            };
-            return walk(0).then((dlink) => {
-              if (dlink) {
-                links.push({
-                  source: `HubCloud - 10Gbps ${labelExtras}`,
-                  quality,
-                  url: dlink,
-                  size: sizeInBytes2,
-                  fileName
-                });
-              }
-            });
+            return Promise.resolve();
           }
           return loadExtractor(link2, finalUrl).then((r) => links.push(...r));
         });
@@ -2252,17 +2227,33 @@ var require_moviesdrive = __commonJS({
     }
     function getStreams2(tmdbId, mediaType = "movie", season = null, episode = null) {
       return __async(this, null, function* () {
-        var _a;
         const candidates = yield getStreamsLegacy(tmdbId, mediaType, season, episode);
-        const streams = [];
-        for (const candidate of candidates) {
+        const resolved = yield Promise.all(candidates.map((candidate) => __async(this, null, function* () {
+          var _a;
           const requestHeaders = withReferer(candidate.headers || HEADERS, ((_a = candidate.headers) == null ? void 0 : _a.Referer) || MAIN_URL);
-          const finalUrl = yield resolveFinalUrl(candidate.url, { headers: requestHeaders }).catch(() => null);
+          const resolution = resolveFinalUrl(candidate.url, { headers: requestHeaders }).catch(() => null);
+          const finalUrl = yield new Promise((resolve) => {
+            let done = false;
+            const timer = setTimeout(() => {
+              if (done)
+                return;
+              done = true;
+              const safeDirect = /cloudflarestorage\.com|pixeldrain\.com\/api\/file|\.(?:mkv|mp4|m3u8)(?:\?|$)/i.test(candidate.url);
+              resolve(safeDirect ? candidate.url : null);
+            }, 4500);
+            resolution.then((value) => {
+              if (done)
+                return;
+              done = true;
+              clearTimeout(timer);
+              resolve(value);
+            });
+          });
           if (!finalUrl)
-            continue;
+            return null;
           const attributes = parseMediaAttributes(candidate.title, candidate.name, candidate.size, finalUrl);
           const verifiedQuality = attributes.quality !== "Unknown" ? attributes.quality : candidate.quality;
-          streams.push(__spreadProps(__spreadValues(__spreadProps(__spreadValues({}, candidate), {
+          return __spreadProps(__spreadValues(__spreadProps(__spreadValues({}, candidate), {
             url: finalUrl,
             headers: requestHeaders,
             subtitles: candidate.subtitles || []
@@ -2271,9 +2262,9 @@ var require_moviesdrive = __commonJS({
             title: candidate.title || attributes.title || "MoviesDrive",
             quality: candidate.quality === "240p" && attributes.quality === "Unknown" ? "Unknown" : verifiedQuality,
             size: candidate.size || attributes.size
-          }));
-        }
-        return uniqueStreams(streams);
+          });
+        })));
+        return uniqueStreams(resolved.filter(Boolean));
       });
     }
   }
@@ -2283,6 +2274,31 @@ var require_moviesdrive = __commonJS({
 var { getStreams: getCastleStreams } = require_castle();
 var { getStreams: getVegaMoviesStreams } = require_vegamovies();
 var { getStreams: getMoviesDriveStreams } = require_moviesdrive();
+var PROVIDER_TIMEOUT_MS = 15e3;
+function withTimeout(promise, label) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled)
+        console.warn(`[StreamPlay] ${label} timed out after ${PROVIDER_TIMEOUT_MS}ms`);
+      settled = true;
+      resolve([]);
+    }, PROVIDER_TIMEOUT_MS);
+    Promise.resolve(promise).then((value) => {
+      if (settled)
+        return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(Array.isArray(value) ? value : []);
+    }).catch(() => {
+      if (settled)
+        return;
+      settled = true;
+      clearTimeout(timer);
+      resolve([]);
+    });
+  });
+}
 function normalizeQuality(value) {
   const match = String(value || "").match(/(2160|1440|1080|720|480|360|240)/);
   if (match)
@@ -2293,12 +2309,12 @@ function getStreams(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
     if (!tmdbId || mediaType !== "movie" && mediaType !== "tv")
       return Promise.resolve([]);
-    const results = yield Promise.allSettled([
-      getVegaMoviesStreams(tmdbId, mediaType, season, episode),
-      getMoviesDriveStreams(tmdbId, mediaType, season, episode),
-      getCastleStreams(tmdbId, mediaType, season, episode)
+    const results = yield Promise.all([
+      withTimeout(getVegaMoviesStreams(tmdbId, mediaType, season, episode), "VegaMovies"),
+      withTimeout(getMoviesDriveStreams(tmdbId, mediaType, season, episode), "MoviesDrive"),
+      withTimeout(getCastleStreams(tmdbId, mediaType, season, episode), "Castle")
     ]);
-    const streams = results.flatMap((result) => result.status === "fulfilled" && Array.isArray(result.value) ? result.value : []);
+    const streams = results.flat();
     return streams.map(function(stream) {
       return Object.assign({}, stream, {
         name: String(stream.name || "Castle").replace(/^Castle/, "StreamPlay"),
