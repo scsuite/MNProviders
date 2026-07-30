@@ -33,13 +33,18 @@ function seasonPages($, season) {
   $('h5').each((_, heading) => {
     if (!pattern.test($(heading).text())) return;
     let node = $(heading).next();
-    while (node.length) {
-      if ((node[0]?.tagName || '').toLowerCase() === 'h5' && /Season\s*\d+/i.test(node.text())) break;
-      node.find('a[href]').addBack('a[href]').each((__, anchor) => {
+    let traversed = 0;
+    while (node.length && traversed++ < 100) {
+      // Nuvio's lightweight Cheerio bridge exposes no DOM node indexes and
+      // does not implement addBack(). Text boundaries work in both Nuvio and Node.
+      const nodeText = node.text();
+      const anchors = node.attr('href') ? [node] : node.find('a[href]').get();
+      anchors.forEach(anchor => {
         const text = $(anchor).text();
         const href = $(anchor).attr('href');
         if (href && /single\s*episode/i.test(text) && !/zip/i.test(text) && !result.includes(href)) result.push(href);
       });
+      if (/Season\s*\d+/i.test(nodeText)) break;
       node = node.next();
     }
   });
@@ -52,13 +57,15 @@ function episodeLinks($, episode) {
   $('h5').each((_, heading) => {
     if (!pattern.test($(heading).text())) return;
     let node = $(heading).next();
-    while (node.length && (node[0]?.tagName || '').toLowerCase() !== 'hr') {
-      const tag = (node[0]?.tagName || '').toLowerCase();
-      if (tag === 'h5' && /(?:Ep|Episode)\s*\d+/i.test(node.text())) break;
-      node.find('a[href]').addBack('a[href]').each((__, anchor) => {
+    let traversed = 0;
+    while (node.length && traversed++ < 100) {
+      const nodeText = node.text();
+      const anchors = node.attr('href') ? [node] : node.find('a[href]').get();
+      anchors.forEach(anchor => {
         const href = $(anchor).attr('href');
         if (href && /hubcloud/i.test(href) && !result.includes(href)) result.push(href);
       });
+      if (/(?:Ep|Episode)\s*\d+/i.test(nodeText)) break;
       node = node.next();
     }
   });

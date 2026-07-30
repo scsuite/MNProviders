@@ -210,19 +210,21 @@ function seasonPages($, season) {
   const result = [];
   const pattern = new RegExp(`Season\\s*0?${season}(?:\\D|$)`, "i");
   $("h5").each((_, heading) => {
-    var _a;
     if (!pattern.test($(heading).text()))
       return;
     let node = $(heading).next();
-    while (node.length) {
-      if ((((_a = node[0]) == null ? void 0 : _a.tagName) || "").toLowerCase() === "h5" && /Season\s*\d+/i.test(node.text()))
-        break;
-      node.find("a[href]").addBack("a[href]").each((__, anchor) => {
+    let traversed = 0;
+    while (node.length && traversed++ < 100) {
+      const nodeText = node.text();
+      const anchors = node.attr("href") ? [node] : node.find("a[href]").get();
+      anchors.forEach((anchor) => {
         const text = $(anchor).text();
         const href = $(anchor).attr("href");
         if (href && /single\s*episode/i.test(text) && !/zip/i.test(text) && !result.includes(href))
           result.push(href);
       });
+      if (/Season\s*\d+/i.test(nodeText))
+        break;
       node = node.next();
     }
   });
@@ -232,19 +234,20 @@ function episodeLinks($, episode) {
   const result = [];
   const pattern = new RegExp(`(?:Ep|Episode)\\s*0?${episode}(?:\\D|$)`, "i");
   $("h5").each((_, heading) => {
-    var _a, _b;
     if (!pattern.test($(heading).text()))
       return;
     let node = $(heading).next();
-    while (node.length && (((_a = node[0]) == null ? void 0 : _a.tagName) || "").toLowerCase() !== "hr") {
-      const tag = (((_b = node[0]) == null ? void 0 : _b.tagName) || "").toLowerCase();
-      if (tag === "h5" && /(?:Ep|Episode)\s*\d+/i.test(node.text()))
-        break;
-      node.find("a[href]").addBack("a[href]").each((__, anchor) => {
+    let traversed = 0;
+    while (node.length && traversed++ < 100) {
+      const nodeText = node.text();
+      const anchors = node.attr("href") ? [node] : node.find("a[href]").get();
+      anchors.forEach((anchor) => {
         const href = $(anchor).attr("href");
         if (href && /hubcloud/i.test(href) && !result.includes(href))
           result.push(href);
       });
+      if (/(?:Ep|Episode)\s*\d+/i.test(nodeText))
+        break;
       node = node.next();
     }
   });
