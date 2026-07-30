@@ -1143,7 +1143,7 @@ function getDownloadLinks(mediaUrl, season, episode) {
                 const a = next.find("a[href]").addBack("a[href]");
                 if (a.length) {
                   const href = a.attr("href");
-                  if (/hubcloud|gdflix/i.test(href)) {
+                  if (/hubcloud/i.test(href)) {
                     episodeLinks.push(href);
                   }
                 }

@@ -1099,7 +1099,10 @@ function getDownloadLinks(mediaUrl, season, episode) {
                                         const a = next.find('a[href]').addBack('a[href]');
                                         if (a.length) {
                                             const href = a.attr('href');
-                                            if (/hubcloud|gdflix/i.test(href)) {
+                                            // HubCloud currently provides the working direct MKV
+                                            // mirrors. GDFlix adds several slow/dead network hops
+                                            // and can make Nuvio close the provider before return.
+                                            if (/hubcloud/i.test(href)) {
                                                 episodeLinks.push(href);
                                             }
                                         }
