@@ -30,6 +30,7 @@ function safeUrl(value) {
 
 function hubCloudServer(text, link) {
   const value = `${text || ''} ${link || ''}`.toLowerCase();
+  if (/gpdl\.|server\s*:\s*10gbps/.test(value)) return 'HubCloud Pixel 10Gbps';
   if (/fslv2/.test(value)) return 'HubCloud FSLv2';
   if (/fsl/.test(value)) return 'HubCloud FSL';
   if (/s3 server/.test(value)) return 'HubCloud S3';
@@ -101,7 +102,8 @@ export async function extractHubCloud(url, referer) {
     const buttons = $('a.btn[href]').map((_, element) => {
       const link = $(element).attr('href');
       const text = $(element).text().toLowerCase();
-      if (!link || !/(download file|fsl|buzzserver|pixeldra|pixelserver|pixel server|s3 server|mega server|pdl server)/i.test(text)) return null;
+      if (!link || !/(download file|download\s*\[server|fsl|buzzserver|pixeldra|pixelserver|pixel server|s3 server|mega server|pdl server)/i.test(text)) return null;
+      if (/workers\.dev/i.test(link) && /download file/i.test(text)) return null;
       return { link: absoluteUrl(link, pageUrl), text };
     }).get().filter(Boolean);
     const streams = await Promise.all(buttons.map(async button => {
@@ -113,6 +115,17 @@ export async function extractHubCloud(url, referer) {
           const parsed = new URL(link);
           const id = parsed.pathname.split('/').filter(Boolean).pop();
           if (!/download/i.test(link) && id) link = `${parsed.origin}/api/file/${id}?download`;
+        } catch (_) { return null; }
+      } else if (/gpdl\.|download\s*\[server\s*:\s*10gbps/i.test(`${button.link} ${button.text}`)) {
+        try {
+          const gateway = await fetch(link, { redirect: 'manual', headers: { ...HEADERS, Referer: pageUrl } });
+          const worker = absoluteUrl(gateway.headers?.get?.('location'), link);
+          if (!worker) return null;
+          const generated = await fetch(worker, { redirect: 'manual', headers: { ...HEADERS, Referer: link } });
+          const wrapper = absoluteUrl(generated.headers?.get?.('location'), worker);
+          if (!wrapper) return null;
+          link = new URL(wrapper).searchParams.get('link');
+          if (!link) return null;
         } catch (_) { return null; }
       } else if (/buzzserver/i.test(button.text)) {
         try {

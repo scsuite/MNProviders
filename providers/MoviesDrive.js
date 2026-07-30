@@ -108,6 +108,8 @@ function safeUrl(value) {
 }
 function hubCloudServer(text, link) {
   const value = `${text || ""} ${link || ""}`.toLowerCase();
+  if (/gpdl\.|server\s*:\s*10gbps/.test(value))
+    return "HubCloud Pixel 10Gbps";
   if (/fslv2/.test(value))
     return "HubCloud FSLv2";
   if (/fsl/.test(value))
@@ -195,12 +197,14 @@ function extractHubCloud(url, referer) {
       const buttons = $("a.btn[href]").map((_, element) => {
         const link = $(element).attr("href");
         const text = $(element).text().toLowerCase();
-        if (!link || !/(download file|fsl|buzzserver|pixeldra|pixelserver|pixel server|s3 server|mega server|pdl server)/i.test(text))
+        if (!link || !/(download file|download\s*\[server|fsl|buzzserver|pixeldra|pixelserver|pixel server|s3 server|mega server|pdl server)/i.test(text))
+          return null;
+        if (/workers\.dev/i.test(link) && /download file/i.test(text))
           return null;
         return { link: absoluteUrl(link, pageUrl), text };
       }).get().filter(Boolean);
       const streams = yield Promise.all(buttons.map((button) => __async(this, null, function* () {
-        var _a2, _b, _c, _d;
+        var _a2, _b, _c, _d, _e, _f, _g, _h;
         let link = button.link;
         if (/pixeldra|pixelserver|pixel server/i.test(button.text)) {
           try {
@@ -211,10 +215,26 @@ function extractHubCloud(url, referer) {
           } catch (_) {
             return null;
           }
+        } else if (/gpdl\.|download\s*\[server\s*:\s*10gbps/i.test(`${button.link} ${button.text}`)) {
+          try {
+            const gateway = yield fetch(link, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }) });
+            const worker = absoluteUrl((_b = (_a2 = gateway.headers) == null ? void 0 : _a2.get) == null ? void 0 : _b.call(_a2, "location"), link);
+            if (!worker)
+              return null;
+            const generated = yield fetch(worker, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: link }) });
+            const wrapper = absoluteUrl((_d = (_c = generated.headers) == null ? void 0 : _c.get) == null ? void 0 : _d.call(_c, "location"), worker);
+            if (!wrapper)
+              return null;
+            link = new URL(wrapper).searchParams.get("link");
+            if (!link)
+              return null;
+          } catch (_) {
+            return null;
+          }
         } else if (/buzzserver/i.test(button.text)) {
           try {
             const response2 = yield fetch(link, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }) });
-            link = absoluteUrl(((_b = (_a2 = response2.headers) == null ? void 0 : _a2.get) == null ? void 0 : _b.call(_a2, "hx-redirect")) || ((_d = (_c = response2.headers) == null ? void 0 : _c.get) == null ? void 0 : _d.call(_c, "location")), link);
+            link = absoluteUrl(((_f = (_e = response2.headers) == null ? void 0 : _e.get) == null ? void 0 : _f.call(_e, "hx-redirect")) || ((_h = (_g = response2.headers) == null ? void 0 : _g.get) == null ? void 0 : _h.call(_g, "location")), link);
             if (!link)
               return null;
           } catch (_) {
