@@ -1372,7 +1372,10 @@ if (typeof module !== "undefined" && module.exports) {
 }
 function getStreams(tmdbId, mediaType = "movie", season = null, episode = null) {
   return __async(this, null, function* () {
-    const candidates = yield getStreamsLegacy(tmdbId, mediaType, season, episode);
+    const normalizedType = String(mediaType || "").toLowerCase() === "tv" || String(mediaType || "").toLowerCase() === "series" ? "tv" : "movie";
+    const normalizedSeason = season == null || season === "" ? null : Number(season);
+    const normalizedEpisode = episode == null || episode === "" ? null : Number(episode);
+    const candidates = yield getStreamsLegacy(String(tmdbId), normalizedType, normalizedSeason, normalizedEpisode);
     const resolved = candidates.map((candidate) => {
       var _a;
       const requestHeaders = withReferer(candidate.headers || HEADERS, ((_a = candidate.headers) == null ? void 0 : _a.Referer) || MAIN_URL);
@@ -1392,11 +1395,23 @@ function getStreams(tmdbId, mediaType = "movie", season = null, episode = null) 
     const qualityOrder = { "4K": 2160, "1440p": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360, "240p": 240 };
     return uniqueStreams(resolved.filter(Boolean)).filter((stream) => stream.quality && stream.quality !== "Unknown").map((stream) => {
       const details = [stream.quality, stream.size, stream.codec, ...stream.languages || []].filter(Boolean);
-      return __spreadProps(__spreadValues({}, stream), {
+      const parsedUrl = new URL(stream.url);
+      parsedUrl.pathname = parsedUrl.pathname.split("/").map((segment) => {
+        try {
+          return encodeURIComponent(decodeURIComponent(segment));
+        } catch (_) {
+          return encodeURIComponent(segment);
+        }
+      }).join("/");
+      return {
         name: `MoviesDrive - ${stream.quality}`,
         title: details.join(" \u2022 "),
-        provider: "MoviesDrive"
-      });
+        url: parsedUrl.toString(),
+        quality: stream.quality,
+        size: stream.size,
+        headers: stream.headers || HEADERS,
+        subtitles: Array.isArray(stream.subtitles) ? stream.subtitles : []
+      };
     }).sort((a, b) => (qualityOrder[b.quality] || 0) - (qualityOrder[a.quality] || 0));
   });
 }

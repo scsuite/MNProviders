@@ -1442,7 +1442,10 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 
 async function getStreams(tmdbId, mediaType = 'movie', season = null, episode = null) {
-    const candidates = await getStreamsLegacy(tmdbId, mediaType, season, episode);
+    const normalizedType = String(mediaType || '').toLowerCase() === 'tv' || String(mediaType || '').toLowerCase() === 'series' ? 'tv' : 'movie';
+    const normalizedSeason = season == null || season === '' ? null : Number(season);
+    const normalizedEpisode = episode == null || episode === '' ? null : Number(episode);
+    const candidates = await getStreamsLegacy(String(tmdbId), normalizedType, normalizedSeason, normalizedEpisode);
     const resolved = candidates.map(candidate => {
         const requestHeaders = withReferer(candidate.headers || HEADERS, candidate.headers?.Referer || MAIN_URL);
         const attributes = parseMediaAttributes(candidate.title, candidate.name, candidate.size, candidate.url);
@@ -1464,11 +1467,19 @@ async function getStreams(tmdbId, mediaType = 'movie', season = null, episode = 
         .filter(stream => stream.quality && stream.quality !== 'Unknown')
         .map(stream => {
             const details = [stream.quality, stream.size, stream.codec, ...(stream.languages || [])].filter(Boolean);
+            const parsedUrl = new URL(stream.url);
+            parsedUrl.pathname = parsedUrl.pathname.split('/').map(segment => {
+                try { return encodeURIComponent(decodeURIComponent(segment)); }
+                catch (_) { return encodeURIComponent(segment); }
+            }).join('/');
             return {
-                ...stream,
                 name: `MoviesDrive - ${stream.quality}`,
                 title: details.join(' • '),
-                provider: 'MoviesDrive'
+                url: parsedUrl.toString(),
+                quality: stream.quality,
+                size: stream.size,
+                headers: stream.headers || HEADERS,
+                subtitles: Array.isArray(stream.subtitles) ? stream.subtitles : []
             };
         })
         .sort((a, b) => (qualityOrder[b.quality] || 0) - (qualityOrder[a.quality] || 0));
