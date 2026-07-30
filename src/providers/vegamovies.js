@@ -1,4 +1,5 @@
 const TMDB_API = 'https://api.themoviedb.org/3';
+const { resolveVCloud } = require('./vcloud');
 const TMDB_KEY = '439c478a771f35c05022f9feabcca01c';
 const DOMAINS_URL = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
 const VEGA_FALLBACK = 'https://vegamovies.catering';
@@ -125,25 +126,36 @@ function episodeReleaseLinks(html, base, season, episode) {
   return links;
 }
 
-async function resolveGDirect(pageUrl, base, episode) {
+async function resolveFastdl(directPage, pageUrl) {
+  const embed = await requestText(directPage, pageUrl);
+  const match = embed.match(/(?:var\s+reurl\s*=\s*|['"])(?:https:\/\/fastdl\.[^/]+\/dl\.php\?link=)(https:\/\/video-downloads\.googleusercontent\.com\/[^'"\s<]+)/i);
+  if (!match) return null;
+  return { name: 'G-Direct (VLC)', url: match[1].replace(/&amp;/g, '&'), referer: directPage, compatibility: 'external' };
+}
+
+async function resolveRelease(pageUrl, base, episode, label) {
   const page = await requestText(pageUrl, base);
-  let directPage = null;
+  let routes = [];
   if (episode) {
     const episodeRegex = new RegExp(`episodes?\\s*:\\s*0?${episode}(?:\\D|$)`, 'i');
     for (const block of headingBlocks(page)) {
       if (!episodeRegex.test(block.heading)) continue;
-      const anchor = anchors(block.body, pageUrl).find(item => /g-?direct|instant|fastdl/i.test(item.text + ' ' + item.url));
-      if (anchor) { directPage = anchor.url; break; }
+      routes = anchors(block.body, pageUrl);
+      break;
     }
   } else {
-    const anchor = anchors(page, pageUrl).find(item => /g-?direct|instant|fastdl/i.test(item.text + ' ' + item.url));
-    if (anchor) directPage = anchor.url;
+    routes = anchors(page, pageUrl);
   }
-  if (!directPage) return null;
-  const embed = await requestText(directPage, pageUrl);
-  const match = embed.match(/(?:var\s+reurl\s*=\s*|['"])(?:https:\/\/fastdl\.[^/]+\/dl\.php\?link=)(https:\/\/video-downloads\.googleusercontent\.com\/[^'"\s<]+)/i);
-  if (!match) return null;
-  return { url: match[1].replace(/&amp;/g, '&'), referer: directPage };
+  const useful = routes.filter(item => /g-?direct|instant|fastdl|v-?cloud|resumable|vcloud\.zip/i.test(item.text + ' ' + item.url));
+  const results = await Promise.all(useful.slice(0, 4).map(async route => {
+    if (/vcloud\.zip|v-?cloud|resumable/i.test(route.text + ' ' + route.url)) {
+      const resolved = await resolveVCloud(route.url, pageUrl, label);
+      return resolved.streams.map(stream => ({ ...stream, referer: stream.headers && stream.headers.Referer, compatibility: 'internal' }));
+    }
+    const direct = await resolveFastdl(route.url, pageUrl);
+    return direct ? [direct] : [];
+  }));
+  return results.flat();
 }
 
 function qualityFrom(label) {
@@ -169,21 +181,22 @@ async function getStreams(tmdbId, mediaType, season, episode) {
     const selected = releases.slice(0, 10);
     const resolved = await Promise.all(selected.map(async release => {
       try {
-        const direct = await resolveGDirect(release.url, base, mediaType === 'tv' ? Number(episode) : null);
-        if (!direct) return null;
+        const directLinks = await resolveRelease(release.url, base, mediaType === 'tv' ? Number(episode) : null, release.label);
         const quality = qualityFrom(release.label);
-        return {
-          name: `StreamPlay VegaMovies - ${quality}`,
+        return directLinks.map(direct => ({
+          name: `StreamPlay VegaMovies ${direct.name} - ${quality}`,
           title: mediaType === 'tv' ? `${media.title} S${season}E${episode}` : media.title,
           url: direct.url,
           quality,
-          headers: { 'User-Agent': USER_AGENT, Referer: direct.referer },
+          headers: direct.headers || { 'User-Agent': USER_AGENT, Referer: direct.referer },
           provider: 'vegamovies',
+          compatibility: direct.compatibility,
           subtitles: []
-        };
-      } catch (_) { return null; }
+        }));
+      } catch (_) { return []; }
     }));
-    return resolved.filter(Boolean).filter((item, index, all) => all.findIndex(other => other.url === item.url) === index);
+    const flat = resolved.flat().filter(Boolean);
+    return flat.filter((item, index, all) => all.findIndex(other => other.url === item.url) === index);
   } catch (error) {
     console.log(`[VegaMovies] ${error && error.message ? error.message : error}`);
     return [];

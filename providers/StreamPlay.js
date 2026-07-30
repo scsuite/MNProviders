@@ -1,5 +1,7 @@
 /** StreamPlay - generated from src/providers/streamplay.js */
 var __defProp = Object.defineProperty;
+var __defProps = Object.defineProperties;
+var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getOwnPropSymbols = Object.getOwnPropertySymbols;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
@@ -16,6 +18,7 @@ var __spreadValues = (a, b) => {
     }
   return a;
 };
+var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
@@ -536,10 +539,147 @@ var require_castle = __commonJS({
   }
 });
 
+// src/providers/vcloud.js
+var require_vcloud = __commonJS({
+  "src/providers/vcloud.js"(exports2, module2) {
+    var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
+    function clean(value) {
+      return String(value || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+    }
+    function origin(url) {
+      const match = String(url).match(/^(https?:\/\/[^/]+)/i);
+      return match ? match[1] : "";
+    }
+    function absolute(value, base) {
+      if (!value)
+        return null;
+      const url = String(value).replace(/&amp;/gi, "&").trim();
+      if (/^https?:\/\//i.test(url))
+        return url;
+      if (url.startsWith("/"))
+        return origin(base) + url;
+      return String(base).replace(/\/[^/]*$/, "/") + url.replace(/^\.\//, "");
+    }
+    function anchors(html, base) {
+      const output = [];
+      const regex = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      let match;
+      while (match = regex.exec(html)) {
+        const url = absolute(match[1], base);
+        if (url)
+          output.push({ url, text: clean(match[2]) });
+      }
+      return output;
+    }
+    function getResponse(url, referer, redirect) {
+      return __async(this, null, function* () {
+        return fetch(url, {
+          redirect: redirect || "follow",
+          headers: __spreadValues({ "User-Agent": USER_AGENT, Accept: "text/html,*/*;q=0.8" }, referer ? { Referer: referer } : {})
+        });
+      });
+    }
+    function decodeTwice(value) {
+      try {
+        return atob(atob(value));
+      } catch (_) {
+        return "";
+      }
+    }
+    function extractIntermediate(html) {
+      const script = String(html);
+      const encoded = script.match(/atob\(atob\(['"]([^'"]+)['"]\)\)/i);
+      if (encoded)
+        return decodeTwice(encoded[1]);
+      const plain = script.match(/var\s+url\s*=\s*['"]([^'"]+)['"]/i);
+      return plain ? plain[1] : "";
+    }
+    function qualityFrom(value) {
+      const match = String(value).match(/(2160|1080|720|480|360)p?/i);
+      if (!match)
+        return "Unknown";
+      return match[1] === "2160" ? "4K" : `${match[1]}p`;
+    }
+    function resolveServer(server, label, referer) {
+      return __async(this, null, function* () {
+        let url = server.url;
+        const text = server.text;
+        let name = text || "V-Cloud";
+        if (/buzzserver/i.test(text)) {
+          const response = yield getResponse(url.replace(/\/$/, "") + "/download", url, "manual");
+          const target = response.headers.get("hx-redirect");
+          if (!target)
+            return null;
+          url = absolute(target, url);
+          name = "BuzzServer";
+        } else if (/pixeldra|pixelserver|\bpixel\b/i.test(text)) {
+          if (!/download/i.test(url))
+            url = origin(url) + "/api/file/" + url.split("/").filter(Boolean).pop() + "?download";
+          name = "Pixeldrain";
+        } else if (/10\s*gbps/i.test(text)) {
+          const response = yield getResponse(url, referer, "follow");
+          url = response.url || url;
+          if (url.includes("link="))
+            url = decodeURIComponent(url.split("link=").pop());
+          name = "10Gbps";
+          if (response.body && response.body.cancel)
+            yield response.body.cancel();
+        } else if (/fslv2/i.test(text))
+          name = "FSLv2";
+        else if (/\bfsl\b/i.test(text))
+          name = "FSL";
+        else if (/pdl server/i.test(text))
+          name = "PDL";
+        else if (/s3 server/i.test(text))
+          name = "S3";
+        else if (/mega server/i.test(text))
+          name = "Mega";
+        return { name, url, quality: qualityFrom(label), headers: { "User-Agent": USER_AGENT, Referer: referer } };
+      });
+    }
+    function resolveVCloud(url, referer, label) {
+      return __async(this, null, function* () {
+        try {
+          let response = yield getResponse(url, referer);
+          if (!response.ok)
+            return { streams: [], blocked: `HTTP ${response.status}` };
+          let html = yield response.text();
+          let pageUrl = response.url || url;
+          if (/api\/index\.php/i.test(pageUrl)) {
+            const next = anchors(html, pageUrl).find((item) => /download|v-?cloud|continue/i.test(item.text + " " + item.url));
+            if (!next)
+              return { streams: [], blocked: "api/index.php target missing" };
+            response = yield getResponse(next.url, pageUrl);
+            if (!response.ok)
+              return { streams: [], blocked: `HTTP ${response.status}` };
+            html = yield response.text();
+            pageUrl = response.url || next.url;
+          }
+          const intermediate = absolute(extractIntermediate(html), pageUrl);
+          if (!intermediate)
+            return { streams: [], blocked: "encoded intermediate URL missing" };
+          response = yield getResponse(intermediate, pageUrl);
+          if (!response.ok)
+            return { streams: [], blocked: `intermediate HTTP ${response.status}` };
+          const serverHtml = yield response.text();
+          const serverPage = response.url || intermediate;
+          const candidates = anchors(serverHtml, serverPage).filter((item) => /fsl|buzz|pixel|pdl|10\s*gbps|s3 server|mega server/i.test(item.text));
+          const results = yield Promise.all(candidates.map((item) => resolveServer(item, label, serverPage).catch(() => null)));
+          return { streams: results.filter(Boolean), blocked: null };
+        } catch (error) {
+          return { streams: [], blocked: error && error.message ? error.message : String(error) };
+        }
+      });
+    }
+    module2.exports = { resolveVCloud };
+  }
+});
+
 // src/providers/vegamovies.js
 var require_vegamovies = __commonJS({
   "src/providers/vegamovies.js"(exports2, module2) {
     var TMDB_API = "https://api.themoviedb.org/3";
+    var { resolveVCloud } = require_vcloud();
     var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
     var DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
     var VEGA_FALLBACK = "https://vegamovies.catering";
@@ -666,33 +806,40 @@ var require_vegamovies = __commonJS({
       }
       return links;
     }
-    function resolveGDirect(pageUrl, base, episode) {
+    function resolveFastdl(directPage, pageUrl) {
+      return __async(this, null, function* () {
+        const embed = yield requestText(directPage, pageUrl);
+        const match = embed.match(/(?:var\s+reurl\s*=\s*|['"])(?:https:\/\/fastdl\.[^/]+\/dl\.php\?link=)(https:\/\/video-downloads\.googleusercontent\.com\/[^'"\s<]+)/i);
+        if (!match)
+          return null;
+        return { name: "G-Direct (VLC)", url: match[1].replace(/&amp;/g, "&"), referer: directPage, compatibility: "external" };
+      });
+    }
+    function resolveRelease(pageUrl, base, episode, label) {
       return __async(this, null, function* () {
         const page = yield requestText(pageUrl, base);
-        let directPage = null;
+        let routes = [];
         if (episode) {
           const episodeRegex = new RegExp(`episodes?\\s*:\\s*0?${episode}(?:\\D|$)`, "i");
           for (const block of headingBlocks(page)) {
             if (!episodeRegex.test(block.heading))
               continue;
-            const anchor = anchors(block.body, pageUrl).find((item) => /g-?direct|instant|fastdl/i.test(item.text + " " + item.url));
-            if (anchor) {
-              directPage = anchor.url;
-              break;
-            }
+            routes = anchors(block.body, pageUrl);
+            break;
           }
         } else {
-          const anchor = anchors(page, pageUrl).find((item) => /g-?direct|instant|fastdl/i.test(item.text + " " + item.url));
-          if (anchor)
-            directPage = anchor.url;
+          routes = anchors(page, pageUrl);
         }
-        if (!directPage)
-          return null;
-        const embed = yield requestText(directPage, pageUrl);
-        const match = embed.match(/(?:var\s+reurl\s*=\s*|['"])(?:https:\/\/fastdl\.[^/]+\/dl\.php\?link=)(https:\/\/video-downloads\.googleusercontent\.com\/[^'"\s<]+)/i);
-        if (!match)
-          return null;
-        return { url: match[1].replace(/&amp;/g, "&"), referer: directPage };
+        const useful = routes.filter((item) => /g-?direct|instant|fastdl|v-?cloud|resumable|vcloud\.zip/i.test(item.text + " " + item.url));
+        const results = yield Promise.all(useful.slice(0, 4).map((route) => __async(this, null, function* () {
+          if (/vcloud\.zip|v-?cloud|resumable/i.test(route.text + " " + route.url)) {
+            const resolved = yield resolveVCloud(route.url, pageUrl, label);
+            return resolved.streams.map((stream) => __spreadProps(__spreadValues({}, stream), { referer: stream.headers && stream.headers.Referer, compatibility: "internal" }));
+          }
+          const direct = yield resolveFastdl(route.url, pageUrl);
+          return direct ? [direct] : [];
+        })));
+        return results.flat();
       });
     }
     function qualityFrom(label) {
@@ -721,24 +868,24 @@ var require_vegamovies = __commonJS({
           const selected = releases.slice(0, 10);
           const resolved = yield Promise.all(selected.map((release) => __async(this, null, function* () {
             try {
-              const direct = yield resolveGDirect(release.url, base, mediaType === "tv" ? Number(episode) : null);
-              if (!direct)
-                return null;
+              const directLinks = yield resolveRelease(release.url, base, mediaType === "tv" ? Number(episode) : null, release.label);
               const quality = qualityFrom(release.label);
-              return {
-                name: `StreamPlay VegaMovies - ${quality}`,
+              return directLinks.map((direct) => ({
+                name: `StreamPlay VegaMovies ${direct.name} - ${quality}`,
                 title: mediaType === "tv" ? `${media.title} S${season}E${episode}` : media.title,
                 url: direct.url,
                 quality,
-                headers: { "User-Agent": USER_AGENT, Referer: direct.referer },
+                headers: direct.headers || { "User-Agent": USER_AGENT, Referer: direct.referer },
                 provider: "vegamovies",
+                compatibility: direct.compatibility,
                 subtitles: []
-              };
+              }));
             } catch (_) {
-              return null;
+              return [];
             }
           })));
-          return resolved.filter(Boolean).filter((item, index, all) => all.findIndex((other) => other.url === item.url) === index);
+          const flat = resolved.flat().filter(Boolean);
+          return flat.filter((item, index, all) => all.findIndex((other) => other.url === item.url) === index);
         } catch (error) {
           console.log(`[VegaMovies] ${error && error.message ? error.message : error}`);
           return [];
