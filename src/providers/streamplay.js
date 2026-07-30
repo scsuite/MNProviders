@@ -1,16 +1,19 @@
 const { getStreams: getCastleStreams } = require('./castle');
 const { getStreams: getVegaMoviesStreams } = require('./vegamovies');
-const { getStreams: getMoviesDriveStreams } = require('./moviesdrive');
-const PROVIDER_TIMEOUT_MS = 15000;
+const PROVIDER_TIMEOUTS = {
+  VegaMovies: 15000,
+  Castle: 15000
+};
 
 function withTimeout(promise, label) {
+  const timeoutMs = PROVIDER_TIMEOUTS[label] || 15000;
   return new Promise(resolve => {
     let settled = false;
     const timer = setTimeout(() => {
-      if (!settled) console.warn(`[StreamPlay] ${label} timed out after ${PROVIDER_TIMEOUT_MS}ms`);
+      if (!settled) console.warn(`[StreamPlay] ${label} timed out after ${timeoutMs}ms`);
       settled = true;
       resolve([]);
-    }, PROVIDER_TIMEOUT_MS);
+    }, timeoutMs);
     Promise.resolve(promise).then(value => {
       if (settled) return;
       settled = true;
@@ -38,7 +41,6 @@ async function getStreams(tmdbId, mediaType, season, episode) {
   if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return Promise.resolve([]);
   const results = await Promise.all([
     withTimeout(getVegaMoviesStreams(tmdbId, mediaType, season, episode), 'VegaMovies'),
-    withTimeout(getMoviesDriveStreams(tmdbId, mediaType, season, episode), 'MoviesDrive'),
     withTimeout(getCastleStreams(tmdbId, mediaType, season, episode), 'Castle')
   ]);
   const streams = results.flat();
