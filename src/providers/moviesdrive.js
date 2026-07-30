@@ -1456,5 +1456,17 @@ async function getStreams(tmdbId, mediaType = 'movie', season = null, episode = 
             size: candidate.size || attributes.size
         };
     });
-    return uniqueStreams(resolved.filter(Boolean));
+    const qualityOrder = { '4K': 2160, '1440p': 1440, '1080p': 1080, '720p': 720, '480p': 480, '360p': 360, '240p': 240 };
+    return uniqueStreams(resolved.filter(Boolean))
+        .filter(stream => stream.quality && stream.quality !== 'Unknown')
+        .map(stream => {
+            const details = [stream.quality, stream.size, stream.codec, ...(stream.languages || [])].filter(Boolean);
+            return {
+                ...stream,
+                name: `MoviesDrive - ${stream.quality}`,
+                title: details.join(' • '),
+                provider: 'MoviesDrive'
+            };
+        })
+        .sort((a, b) => (qualityOrder[b.quality] || 0) - (qualityOrder[a.quality] || 0));
 }
