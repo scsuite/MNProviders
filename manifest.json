@@ -1,13 +1,13 @@
 {
   "name": "MNProviders",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Nuvio-compatible Phisher StreamPlay port",
   "scrapers": [
     {
       "id": "StreamPlay",
       "name": "StreamPlay",
       "description": "Movies and TV streams with multi-language subtitles; anime/cartoon sources excluded",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": [
         "movie",

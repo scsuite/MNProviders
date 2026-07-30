@@ -1,6 +1,4 @@
-const { getMediaInfo } = require('../shared/media');
-const { parseQuality, uniqueStreams } = require('../shared/streams');
-
+const TMDB_API_KEY = '1865f43a0549ca50d341dd9ab8b29f49';
 const ENCRYPT_API = 'https://enc-dec.app/api/enc-vidlink';
 const STREAM_API = 'https://vidlink.pro/api/b';
 const HEADERS = {
@@ -9,89 +7,100 @@ const HEADERS = {
   Origin: 'https://vidlink.pro'
 };
 
-async function getJson(url, headers = {}) {
-  const response = await fetch(url, { headers: { ...HEADERS, ...headers } });
-  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
-  return response.json();
+function fetchJson(url, headers) {
+  return fetch(url, { headers: headers || HEADERS }).then(function (response) {
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return response.json();
+  });
 }
 
-function subtitlesFrom(data) {
-  const raw = data?.subtitles || data?.stream?.subtitles || data?.captions || data?.stream?.captions || [];
-  return Array.isArray(raw) ? raw.flatMap((subtitle) => {
-    if (!subtitle?.url) return [];
-    return [{
+function parseQuality(label, url) {
+  const value = String(label || '') + ' ' + String(url || '');
+  if (/(2160|4k|uhd)/i.test(value)) return '4K';
+  if (/1440/i.test(value)) return '1440p';
+  if (/1080/i.test(value)) return '1080p';
+  if (/720/i.test(value)) return '720p';
+  if (/480/i.test(value)) return '480p';
+  if (/360/i.test(value)) return '360p';
+  if (/240/i.test(value)) return '240p';
+  return 'Unknown';
+}
+
+function getSubtitles(data) {
+  const stream = data && data.stream;
+  const raw = (data && (data.subtitles || data.captions)) ||
+    (stream && (stream.subtitles || stream.captions)) || [];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(function (subtitle) {
+    return subtitle && /^https?:\/\//i.test(subtitle.url || '');
+  }).map(function (subtitle) {
+    return {
       url: subtitle.url,
       language: subtitle.language || subtitle.lang || subtitle.label || subtitle.name || 'Unknown'
-    }];
-  }) : [];
+    };
+  });
 }
 
-function qualityFrom(label, url) {
-  const parsed = parseQuality(label, url);
-  return parsed === 'Unknown' && /^auto$/i.test(label || '') ? 'Auto' : parsed;
-}
+function normalizeStreams(data, mediaTitle) {
+  const subtitles = getSubtitles(data);
+  const output = [];
+  const seen = {};
 
-function directStreams(data, title) {
-  const subtitles = subtitlesFrom(data);
-  const streams = [];
-  const qualities = data?.stream?.qualities;
+  function add(url, label) {
+    if (!/^https?:\/\//i.test(url || '') || seen[url]) return;
+    seen[url] = true;
+    output.push({
+      name: 'StreamPlay - Vidlink',
+      title: 'StreamPlay - ' + (label || mediaTitle || 'Stream'),
+      url: url,
+      quality: parseQuality(label, url),
+      headers: HEADERS,
+      subtitles: subtitles
+    });
+  }
 
+  const stream = data && data.stream;
+  const qualities = stream && stream.qualities;
   if (qualities && typeof qualities === 'object') {
-    for (const [label, value] of Object.entries(qualities)) {
-      if (!value?.url) continue;
-      streams.push({
-        name: `StreamPlay • Vidlink`,
-        title: `Vidlink • ${label}`,
-        url: value.url,
-        quality: qualityFrom(label, value.url),
-        headers: HEADERS,
-        subtitles
-      });
-    }
-  }
-
-  const fallbackUrl = data?.url || data?.stream?.url;
-  if (fallbackUrl) {
-    streams.push({
-      name: 'StreamPlay • Vidlink',
-      title: `Vidlink • ${title}`,
-      url: fallbackUrl,
-      quality: qualityFrom(data?.quality, fallbackUrl),
-      headers: HEADERS,
-      subtitles
+    Object.keys(qualities).forEach(function (label) {
+      const item = qualities[label];
+      if (item && item.url) add(item.url, label);
     });
   }
 
-  for (const item of Array.isArray(data?.streams) ? data.streams : []) {
-    if (!item?.url) continue;
-    streams.push({
-      name: 'StreamPlay • Vidlink',
-      title: `Vidlink • ${item.quality || item.label || title}`,
-      url: item.url,
-      quality: qualityFrom(item.quality || item.label, item.url),
-      headers: HEADERS,
-      subtitles
+  if (data && data.url) add(data.url, data.quality);
+  if (stream && stream.url) add(stream.url, stream.quality);
+  if (data && Array.isArray(data.streams)) {
+    data.streams.forEach(function (item) {
+      if (item) add(item.url, item.quality || item.label);
     });
   }
-
-  return uniqueStreams(streams);
+  return output;
 }
 
-async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
-  try {
-    if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return [];
-    const media = await getMediaInfo(tmdbId, mediaType);
-    const encrypted = await getJson(`${ENCRYPT_API}?text=${encodeURIComponent(tmdbId)}`);
-    if (!encrypted?.result) return [];
+function getStreams(tmdbId, mediaType, season, episode) {
+  if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return Promise.resolve([]);
+  const tmdbUrl = 'https://api.themoviedb.org/3/' + mediaType + '/' +
+    encodeURIComponent(tmdbId) + '?api_key=' + TMDB_API_KEY;
+
+  return Promise.all([
+    fetchJson(tmdbUrl, HEADERS),
+    fetchJson(ENCRYPT_API + '?text=' + encodeURIComponent(tmdbId), HEADERS)
+  ]).then(function (values) {
+    const metadata = values[0] || {};
+    const encrypted = values[1] && values[1].result;
+    if (!encrypted) return [];
+    const title = metadata.title || metadata.name || 'Stream';
     const endpoint = mediaType === 'tv'
-      ? `${STREAM_API}/tv/${encrypted.result}/${season}/${episode}`
-      : `${STREAM_API}/movie/${encrypted.result}`;
-    const data = await getJson(endpoint);
-    return directStreams(data, media.title);
-  } catch (error) {
-    console.error('[Vidlink]', error.message || error);
+      ? STREAM_API + '/tv/' + encrypted + '/' + (season || 1) + '/' + (episode || 1)
+      : STREAM_API + '/movie/' + encrypted;
+    return fetchJson(endpoint, HEADERS).then(function (data) {
+      return normalizeStreams(data, title);
+    });
+  }).catch(function (error) {
+    console.log('[StreamPlay] ' + (error && error.message ? error.message : error));
     return [];
-  }
+  });
 }
 
 module.exports = { getStreams };
