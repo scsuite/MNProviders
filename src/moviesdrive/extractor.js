@@ -99,25 +99,14 @@ export async function extractHubCloud(url, referer) {
     const buttons = $('a.btn[href]').map((_, element) => {
       const link = $(element).attr('href');
       const text = $(element).text().toLowerCase();
-      if (!link || !/(download file|download\s*\[server|fsl|s3 server|mega server)/i.test(text)) return null;
+      if (!link || !/(download file|fsl|s3 server|mega server)/i.test(text)) return null;
       return { link: absoluteUrl(link, pageUrl), text };
     }).get().filter(Boolean);
     const streams = await Promise.all(buttons.map(async button => {
       let link = button.link;
-      // Newer HubCloud search results expose a Pixel gateway instead of the
-      // older Download File button. Follow its two redirects and unwrap the
-      // final ?link= Google media URL so Nuvio receives a stream, not a page.
-      if (/pixel\.hubcloud\.|download\s*\[server/i.test(`${button.text} ${link}`)) {
-        try {
-          const first = await fetch(link, { redirect: 'manual', headers: { ...HEADERS, Referer: pageUrl } });
-          const worker = absoluteUrl(first.headers?.get?.('location'), link);
-          if (!worker) return null;
-          const second = await fetch(worker, { redirect: 'manual', headers: { ...HEADERS, Referer: link } });
-          const wrapped = absoluteUrl(second.headers?.get?.('location'), worker);
-          if (!wrapped) return null;
-          link = new URL(wrapped).searchParams.get('link') || wrapped;
-        } catch (_) { return null; }
-      }
+      // video-downloads.googleusercontent.com is a download-only endpoint: it
+      // ignores Range and returns 200 + attachment, so Nuvio cannot seek/stream it.
+      if (/video-downloads\.googleusercontent\.com/i.test(link)) return null;
       return {
         source: hubCloudServer(button.text, button.link),
         title: [quality, size].filter(Boolean).join(' • '),

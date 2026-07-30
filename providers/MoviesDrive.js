@@ -191,28 +191,14 @@ function extractHubCloud(url, referer) {
       const buttons = $("a.btn[href]").map((_, element) => {
         const link = $(element).attr("href");
         const text = $(element).text().toLowerCase();
-        if (!link || !/(download file|download\s*\[server|fsl|s3 server|mega server)/i.test(text))
+        if (!link || !/(download file|fsl|s3 server|mega server)/i.test(text))
           return null;
         return { link: absoluteUrl(link, pageUrl), text };
       }).get().filter(Boolean);
       const streams = yield Promise.all(buttons.map((button) => __async(this, null, function* () {
-        var _a2, _b, _c, _d;
         let link = button.link;
-        if (/pixel\.hubcloud\.|download\s*\[server/i.test(`${button.text} ${link}`)) {
-          try {
-            const first = yield fetch(link, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }) });
-            const worker = absoluteUrl((_b = (_a2 = first.headers) == null ? void 0 : _a2.get) == null ? void 0 : _b.call(_a2, "location"), link);
-            if (!worker)
-              return null;
-            const second = yield fetch(worker, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: link }) });
-            const wrapped = absoluteUrl((_d = (_c = second.headers) == null ? void 0 : _c.get) == null ? void 0 : _d.call(_c, "location"), worker);
-            if (!wrapped)
-              return null;
-            link = new URL(wrapped).searchParams.get("link") || wrapped;
-          } catch (_) {
-            return null;
-          }
-        }
+        if (/video-downloads\.googleusercontent\.com/i.test(link))
+          return null;
         return {
           source: hubCloudServer(button.text, button.link),
           title: [quality, size].filter(Boolean).join(" \u2022 "),
