@@ -118,12 +118,14 @@ function hubCloudServer(text, link) {
     return "HubCloud Mega";
   if (/pixeldrain/.test(value))
     return "HubCloud Pixeldrain";
+  if (/pixel\.|pixelserver/.test(value))
+    return "HubCloud Pixel";
   if (/workers\.dev|download file/.test(value))
     return "HubCloud Direct";
   return "HubCloud";
 }
-function expandMovieButton(url) {
-  return __async(this, null, function* () {
+function expandMovieButton(_0) {
+  return __async(this, arguments, function* (url, hint = {}) {
     var _a, _b;
     try {
       const response = yield fetch(url, { headers: HEADERS });
@@ -137,7 +139,20 @@ function expandMovieButton(url) {
         const params = new URLSearchParams({ api: "search", q: query, page: "1", from_ac: token });
         const data = yield fetch(`${endpoint}?${params}`, { headers: __spreadProps(__spreadValues({}, HEADERS), { Accept: "application/json" }) }).then((r) => r.json());
         const words = query.toLowerCase().replace(/\b(download|19\d{2}|20\d{2}|2160p|1080p|720p|480p)\b/g, "").split(/\W+/).filter((w) => w.length > 2);
-        return (data.hits || []).filter((hit) => words.every((word) => String(hit.file_name || "").toLowerCase().includes(word))).map((hit) => hit.url).filter(Boolean);
+        return (data.hits || []).filter((hit) => {
+          const name = String(hit.file_name || "");
+          const normalized = name.toLowerCase();
+          if (!words.every((word) => normalized.includes(word)) || /\.zip(?:$|\?)/i.test(name))
+            return false;
+          if (!hint.season || !hint.episode)
+            return true;
+          const season = Number(hint.season);
+          const episode = Number(hint.episode);
+          const seasonMatch = new RegExp(`(?:s|season[ ._-]*)0?${season}(?:\\D|$)`, "i").test(name);
+          const episodeMatch = new RegExp(`(?:e|ep|episode[ ._-]*)0?${episode}(?:\\D|$)`, "i").test(name);
+          const compactMatch = new RegExp(`(?:^|\\D)${season}x0?${episode}(?:\\D|$)`, "i").test(name);
+          return seasonMatch && episodeMatch || compactMatch;
+        }).map((hit) => hit.url).filter(Boolean);
       }
       const $ = import_cheerio_without_node_native.default.load(html);
       const hosts = $("a[href]").map((_, anchor) => $(anchor).attr("href")).get().filter((href) => /hubcloud/i.test(href || ""));
@@ -169,21 +184,42 @@ function extractHubCloud(url, referer) {
       const header = $("div.card-header").text().trim() || $("title").text().trim();
       const size = parseSize($("i#size").text());
       const quality = parseQuality(header);
-      return $("a.btn[href]").map((_, element) => {
+      const buttons = $("a.btn[href]").map((_, element) => {
         const link = $(element).attr("href");
         const text = $(element).text().toLowerCase();
-        if (!link || !/(download file|fsl|s3 server|mega server)/i.test(text))
+        if (!link || !/(download file|download\s*\[server|fsl|s3 server|mega server)/i.test(text))
           return null;
+        return { link: absoluteUrl(link, pageUrl), text };
+      }).get().filter(Boolean);
+      const streams = yield Promise.all(buttons.map((button) => __async(this, null, function* () {
+        var _a2, _b, _c, _d;
+        let link = button.link;
+        if (/pixel\.hubcloud\.|download\s*\[server/i.test(`${button.text} ${link}`)) {
+          try {
+            const first = yield fetch(link, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }) });
+            const worker = absoluteUrl((_b = (_a2 = first.headers) == null ? void 0 : _a2.get) == null ? void 0 : _b.call(_a2, "location"), link);
+            if (!worker)
+              return null;
+            const second = yield fetch(worker, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: link }) });
+            const wrapped = absoluteUrl((_d = (_c = second.headers) == null ? void 0 : _c.get) == null ? void 0 : _d.call(_c, "location"), worker);
+            if (!wrapped)
+              return null;
+            link = new URL(wrapped).searchParams.get("link") || wrapped;
+          } catch (_) {
+            return null;
+          }
+        }
         return {
-          source: hubCloudServer(text, link),
+          source: hubCloudServer(button.text, button.link),
           title: [quality, size].filter(Boolean).join(" \u2022 "),
-          url: safeUrl(absoluteUrl(link, pageUrl)),
+          url: safeUrl(link),
           quality,
           size,
           headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }),
           subtitles: []
         };
-      }).get().filter(Boolean);
+      })));
+      return streams.filter(Boolean);
     } catch (_) {
       return [];
     }
@@ -378,8 +414,11 @@ function seasonPages($, season) {
       anchors.forEach((anchor) => {
         const text = $(anchor).text();
         const href = $(anchor).attr("href");
-        if (href && /single\s*episode/i.test(text) && !/zip/i.test(text) && !result.includes(href))
-          result.push(href);
+        if (href && /single\s*episode/i.test(text) && !/zip/i.test(text) && !result.some((item) => item.url === href)) {
+          const qualityMatch = text.match(/\b(1080|720|480|360|240)p?\b/i);
+          const quality = /(?:2160p?|4k)/i.test(text) ? "4K" : qualityMatch ? `${qualityMatch[1]}p` : "Unknown";
+          result.push({ url: href, quality });
+        }
       });
       if (/Season\s*\d+/i.test(nodeText))
         break;
@@ -439,8 +478,15 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
         const pages = seasonPages($, seasonNumber);
         const pageResults = yield Promise.all(pages.map((page) => __async(this, null, function* () {
           try {
-            const episodeHtml = yield fetch(page, { headers: HEADERS }).then((r) => r.text());
-            return episodeLinks(import_cheerio_without_node_native2.default.load(episodeHtml), episodeNumber).map((item) => __spreadProps(__spreadValues({}, item), { referer: page }));
+            if (/search-recover\.php/i.test(page.url)) {
+              return [__spreadProps(__spreadValues({}, page), { season: seasonNumber, episode: episodeNumber, referer: mediaUrl })];
+            }
+            const episodeHtml = yield fetch(page.url, { headers: HEADERS }).then((r) => r.text());
+            return episodeLinks(import_cheerio_without_node_native2.default.load(episodeHtml), episodeNumber).map((item) => __spreadProps(__spreadValues({}, item), {
+              season: seasonNumber,
+              episode: episodeNumber,
+              referer: page.url
+            }));
           } catch (_) {
             return [];
           }
@@ -451,7 +497,14 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
         const url = typeof item === "string" ? item : item.url;
         return all.findIndex((other) => (typeof other === "string" ? other : other.url) === url) === index;
       });
-      const extracted = yield Promise.all(uniqueHosts.map((item) => {
+      const expandedHosts = (yield Promise.all(uniqueHosts.map((item) => __async(this, null, function* () {
+        const url = typeof item === "string" ? item : item.url;
+        if (!/search-recover\.php/i.test(url))
+          return [item];
+        const expanded = yield expandMovieButton(url, typeof item === "string" ? {} : item);
+        return expanded.map((expandedUrl) => typeof item === "string" ? expandedUrl : __spreadProps(__spreadValues({}, item), { url: expandedUrl }));
+      })))).flat();
+      const extracted = yield Promise.all(expandedHosts.map((item) => {
         const hint = typeof item === "string" ? {} : item;
         const url = typeof item === "string" ? item : item.url;
         return extractHost(url, hint.referer || mediaUrl, hint);

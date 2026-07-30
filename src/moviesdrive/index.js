@@ -42,7 +42,11 @@ function seasonPages($, season) {
       anchors.forEach(anchor => {
         const text = $(anchor).text();
         const href = $(anchor).attr('href');
-        if (href && /single\s*episode/i.test(text) && !/zip/i.test(text) && !result.includes(href)) result.push(href);
+        if (href && /single\s*episode/i.test(text) && !/zip/i.test(text) && !result.some(item => item.url === href)) {
+          const qualityMatch = text.match(/\b(1080|720|480|360|240)p?\b/i);
+          const quality = /(?:2160p?|4k)/i.test(text) ? '4K' : qualityMatch ? `${qualityMatch[1]}p` : 'Unknown';
+          result.push({ url: href, quality });
+        }
       });
       if (/Season\s*\d+/i.test(nodeText)) break;
       node = node.next();
@@ -99,8 +103,16 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
       const pages = seasonPages($, seasonNumber);
       const pageResults = await Promise.all(pages.map(async page => {
         try {
-          const episodeHtml = await fetch(page, { headers: HEADERS }).then(r => r.text());
-          return episodeLinks(cheerio.load(episodeHtml), episodeNumber).map(item => ({ ...item, referer: page }));
+          if (/search-recover\.php/i.test(page.url)) {
+            return [{ ...page, season: seasonNumber, episode: episodeNumber, referer: mediaUrl }];
+          }
+          const episodeHtml = await fetch(page.url, { headers: HEADERS }).then(r => r.text());
+          return episodeLinks(cheerio.load(episodeHtml), episodeNumber).map(item => ({
+            ...item,
+            season: seasonNumber,
+            episode: episodeNumber,
+            referer: page.url
+          }));
         } catch (_) { return []; }
       }));
       hostPages = pageResults.flat();
@@ -109,7 +121,13 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
       const url = typeof item === 'string' ? item : item.url;
       return all.findIndex(other => (typeof other === 'string' ? other : other.url) === url) === index;
     });
-    const extracted = await Promise.all(uniqueHosts.map(item => {
+    const expandedHosts = (await Promise.all(uniqueHosts.map(async item => {
+      const url = typeof item === 'string' ? item : item.url;
+      if (!/search-recover\.php/i.test(url)) return [item];
+      const expanded = await expandMovieButton(url, typeof item === 'string' ? {} : item);
+      return expanded.map(expandedUrl => typeof item === 'string' ? expandedUrl : { ...item, url: expandedUrl });
+    }))).flat();
+    const extracted = await Promise.all(expandedHosts.map(item => {
       const hint = typeof item === 'string' ? {} : item;
       const url = typeof item === 'string' ? item : item.url;
       return extractHost(url, hint.referer || mediaUrl, hint);

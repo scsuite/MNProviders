@@ -35,11 +35,12 @@ function hubCloudServer(text, link) {
   if (/s3 server/.test(value)) return 'HubCloud S3';
   if (/mega server/.test(value)) return 'HubCloud Mega';
   if (/pixeldrain/.test(value)) return 'HubCloud Pixeldrain';
+  if (/pixel\.|pixelserver/.test(value)) return 'HubCloud Pixel';
   if (/workers\.dev|download file/.test(value)) return 'HubCloud Direct';
   return 'HubCloud';
 }
 
-export async function expandMovieButton(url) {
+export async function expandMovieButton(url, hint = {}) {
   try {
     const response = await fetch(url, { headers: HEADERS });
     const html = await response.text();
@@ -51,7 +52,18 @@ export async function expandMovieButton(url) {
       const params = new URLSearchParams({ api: 'search', q: query, page: '1', from_ac: token });
       const data = await fetch(`${endpoint}?${params}`, { headers: { ...HEADERS, Accept: 'application/json' } }).then(r => r.json());
       const words = query.toLowerCase().replace(/\b(download|19\d{2}|20\d{2}|2160p|1080p|720p|480p)\b/g, '').split(/\W+/).filter(w => w.length > 2);
-      return (data.hits || []).filter(hit => words.every(word => String(hit.file_name || '').toLowerCase().includes(word))).map(hit => hit.url).filter(Boolean);
+      return (data.hits || []).filter(hit => {
+        const name = String(hit.file_name || '');
+        const normalized = name.toLowerCase();
+        if (!words.every(word => normalized.includes(word)) || /\.zip(?:$|\?)/i.test(name)) return false;
+        if (!hint.season || !hint.episode) return true;
+        const season = Number(hint.season);
+        const episode = Number(hint.episode);
+        const seasonMatch = new RegExp(`(?:s|season[ ._-]*)0?${season}(?:\\D|$)`, 'i').test(name);
+        const episodeMatch = new RegExp(`(?:e|ep|episode[ ._-]*)0?${episode}(?:\\D|$)`, 'i').test(name);
+        const compactMatch = new RegExp(`(?:^|\\D)${season}x0?${episode}(?:\\D|$)`, 'i').test(name);
+        return (seasonMatch && episodeMatch) || compactMatch;
+      }).map(hit => hit.url).filter(Boolean);
     }
     const $ = cheerio.load(html);
     const hosts = $('a[href]').map((_, anchor) => $(anchor).attr('href')).get().filter(href => /hubcloud/i.test(href || ''));
@@ -79,20 +91,39 @@ export async function extractHubCloud(url, referer) {
     const header = $('div.card-header').text().trim() || $('title').text().trim();
     const size = parseSize($('i#size').text());
     const quality = parseQuality(header);
-    return $('a.btn[href]').map((_, element) => {
+    const buttons = $('a.btn[href]').map((_, element) => {
       const link = $(element).attr('href');
       const text = $(element).text().toLowerCase();
-      if (!link || !/(download file|fsl|s3 server|mega server)/i.test(text)) return null;
+      if (!link || !/(download file|download\s*\[server|fsl|s3 server|mega server)/i.test(text)) return null;
+      return { link: absoluteUrl(link, pageUrl), text };
+    }).get().filter(Boolean);
+    const streams = await Promise.all(buttons.map(async button => {
+      let link = button.link;
+      // Newer HubCloud search results expose a Pixel gateway instead of the
+      // older Download File button. Follow its two redirects and unwrap the
+      // final ?link= Google media URL so Nuvio receives a stream, not a page.
+      if (/pixel\.hubcloud\.|download\s*\[server/i.test(`${button.text} ${link}`)) {
+        try {
+          const first = await fetch(link, { redirect: 'manual', headers: { ...HEADERS, Referer: pageUrl } });
+          const worker = absoluteUrl(first.headers?.get?.('location'), link);
+          if (!worker) return null;
+          const second = await fetch(worker, { redirect: 'manual', headers: { ...HEADERS, Referer: link } });
+          const wrapped = absoluteUrl(second.headers?.get?.('location'), worker);
+          if (!wrapped) return null;
+          link = new URL(wrapped).searchParams.get('link') || wrapped;
+        } catch (_) { return null; }
+      }
       return {
-        source: hubCloudServer(text, link),
+        source: hubCloudServer(button.text, button.link),
         title: [quality, size].filter(Boolean).join(' • '),
-        url: safeUrl(absoluteUrl(link, pageUrl)),
+        url: safeUrl(link),
         quality,
         size,
         headers: { ...HEADERS, Referer: pageUrl },
         subtitles: []
       };
-    }).get().filter(Boolean);
+    }));
+    return streams.filter(Boolean);
   } catch (_) { return []; }
 }
 
