@@ -2,15 +2,13 @@ import moviesDriveModule from '../../src/moviesdrive/index.js';
 import vegaMoviesModule from '../../src/providers/vegamovies.js';
 import castleModule from '../../src/providers/castle.js';
 
-const VERSION = '1.0.3';
+const VERSION = '1.0.4';
 const DEFAULT_TIMEOUT_MS = 12000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
 const PROVIDERS = {
   moviesdrive: moviesDriveModule.getStreams,
-  // Keep the combined request below Cloudflare Free's subrequest ceiling.
-  vegamovies: (tmdbId, type, season, episode) =>
-    vegaMoviesModule.getStreams(tmdbId, type, season, episode, { maxReleases: 4, onePerQuality: true }),
+  vegamovies: vegaMoviesModule.getStreams,
   castle: castleModule.getStreams
 };
 
