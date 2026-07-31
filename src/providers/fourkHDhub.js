@@ -20,7 +20,7 @@ async function getBaseUrl() {
     const domains = JSON.parse(await text(DOMAINS.PHISHER_DOMAINS));
     if (domains['4khdhub']) return String(domains['4khdhub']).replace(/\/$/, '');
   } catch (_) {}
-  return DOMAINS.FOURKHDHUB_FALLBACK;
+  return DOMAINS.FOURKHDHUB_FALLBACK || 'https://4khdhub.org';
 }
 
 async function metadata(tmdbId, mediaType) {
@@ -122,10 +122,50 @@ async function discoverCandidates(tmdbId, mediaType, season = 1, episode = 1) {
   }
 }
 
+async function resolveHubDrive(candidate) {
+  try {
+    const res = await fetch(candidate.url, { headers: { ...HEADERS, Referer: candidate.referer } });
+    if (!res.ok) return [];
+    const html = await res.text();
+    if (/file not found|404 not found|deleted|login\.php\?action=logout/i.test(html)) return [];
+    if (res.status === 403 || /just a moment|cf-chl|turnstile/i.test(html)) return [];
+
+    const $ = cheerio.load(html);
+    const btnHref = $('a.btn[href], a#download[href], a[href*="hubcloud"]').first().attr('href');
+    if (!btnHref) return [];
+
+    const targetUrl = absolute(btnHref, res.url || candidate.url);
+    if (targetUrl.includes('hubcloud')) {
+      const resolver = moviesDrive.resolveCandidate || moviesDrive.default?.resolveCandidate;
+      if (typeof resolver !== 'function') return [];
+      const streams = await resolver({
+        ...candidate,
+        url: targetUrl,
+        source: 'HubDrive HubCloud',
+        resolverType: 'hubcloud'
+      });
+      return (streams || []).map(stream => ({ ...stream, provider: '4KHDHub' }));
+    }
+
+    if (/^https?:\/\//i.test(targetUrl) && !/html/i.test(targetUrl)) {
+      return [{
+        name: `4KHDHub • ${candidate.quality} • HubDrive Direct`,
+        url: targetUrl,
+        quality: candidate.quality,
+        source: 'HubDrive Direct',
+        provider: '4KHDHub',
+        ...(candidate.size ? { size: candidate.size } : {})
+      }];
+    }
+  } catch (_) {}
+  return [];
+}
+
 async function resolveCandidate(candidate) {
   if (!candidate?.url) return [];
-  // HubDrive currently exposes an account/landing page without a playable URL.
-  // Never leak it to Nuvio. HubCloud uses the existing device-side extractor.
+  if (candidate.resolverType === 'hubdrive') {
+    return resolveHubDrive(candidate);
+  }
   if (candidate.resolverType !== 'hubcloud') return [];
   try {
     const resolver = moviesDrive.resolveCandidate || moviesDrive.default?.resolveCandidate;

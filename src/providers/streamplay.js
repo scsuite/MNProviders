@@ -165,6 +165,21 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
 
     const resolvedCandidates = await mapConcurrent(workerData.candidates || [], 4, resolveDeviceCandidate);
     rawStreams = [...directStreams, ...resolvedCandidates.flat().filter(Boolean)];
+
+    // Some sites allow the user device but block Cloudflare Worker IPs. An
+    // empty provider result must not suppress that provider's local fallback.
+    const workerReported4KHDHub = workerData.providers && Object.prototype.hasOwnProperty.call(workerData.providers, '4khdhub');
+    const worker4KCount = Number(workerData.providers?.['4khdhub']?.count || 0);
+    if (workerReported4KHDHub && worker4KCount === 0) {
+      const discover4KHDHub = fourkHDHubModule.discoverCandidates || fourkHDHubModule.default?.discoverCandidates;
+      if (typeof discover4KHDHub === 'function') {
+        try {
+          const localCandidates = await discover4KHDHub(tmdbId, mediaType, season, episode);
+          const localResolved = await mapConcurrent(localCandidates, 4, resolveDeviceCandidate);
+          rawStreams.push(...localResolved.flat().filter(Boolean));
+        } catch (_) {}
+      }
+    }
   } else {
     rawStreams = await runLocalDiscoveryFallback(tmdbId, mediaType, season, episode);
   }

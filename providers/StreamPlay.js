@@ -2257,7 +2257,7 @@ var require_fourkHDhub = __commonJS({
             return String(domains["4khdhub"]).replace(/\/$/, "");
         } catch (_) {
         }
-        return DOMAINS5.FOURKHDHUB_FALLBACK;
+        return DOMAINS5.FOURKHDHUB_FALLBACK || "https://4khdhub.org";
       });
     }
     function metadata(tmdbId, mediaType) {
@@ -2371,11 +2371,56 @@ var require_fourkHDhub = __commonJS({
         }
       });
     }
+    function resolveHubDrive(candidate) {
+      return __async(this, null, function* () {
+        var _a;
+        try {
+          const res = yield fetch(candidate.url, { headers: __spreadProps(__spreadValues({}, HEADERS2), { Referer: candidate.referer }) });
+          if (!res.ok)
+            return [];
+          const html = yield res.text();
+          if (/file not found|404 not found|deleted|login\.php\?action=logout/i.test(html))
+            return [];
+          if (res.status === 403 || /just a moment|cf-chl|turnstile/i.test(html))
+            return [];
+          const $ = cheerio3.load(html);
+          const btnHref = $('a.btn[href], a#download[href], a[href*="hubcloud"]').first().attr("href");
+          if (!btnHref)
+            return [];
+          const targetUrl = absolute(btnHref, res.url || candidate.url);
+          if (targetUrl.includes("hubcloud")) {
+            const resolver = moviesDrive.resolveCandidate || ((_a = moviesDrive.default) == null ? void 0 : _a.resolveCandidate);
+            if (typeof resolver !== "function")
+              return [];
+            const streams = yield resolver(__spreadProps(__spreadValues({}, candidate), {
+              url: targetUrl,
+              source: "HubDrive HubCloud",
+              resolverType: "hubcloud"
+            }));
+            return (streams || []).map((stream) => __spreadProps(__spreadValues({}, stream), { provider: "4KHDHub" }));
+          }
+          if (/^https?:\/\//i.test(targetUrl) && !/html/i.test(targetUrl)) {
+            return [__spreadValues({
+              name: `4KHDHub \u2022 ${candidate.quality} \u2022 HubDrive Direct`,
+              url: targetUrl,
+              quality: candidate.quality,
+              source: "HubDrive Direct",
+              provider: "4KHDHub"
+            }, candidate.size ? { size: candidate.size } : {})];
+          }
+        } catch (_) {
+        }
+        return [];
+      });
+    }
     function resolveCandidate2(candidate) {
       return __async(this, null, function* () {
         var _a;
         if (!(candidate == null ? void 0 : candidate.url))
           return [];
+        if (candidate.resolverType === "hubdrive") {
+          return resolveHubDrive(candidate);
+        }
         if (candidate.resolverType !== "hubcloud")
           return [];
         try {
@@ -2545,6 +2590,7 @@ function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
 }
 function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
+    var _a, _b, _c;
     if (!tmdbId || mediaType !== "movie" && mediaType !== "tv")
       return [];
     if (mediaType === "tv" && (!season || !episode))
@@ -2558,6 +2604,19 @@ function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
       }));
       const resolvedCandidates = yield mapConcurrent2(workerData.candidates || [], 4, resolveDeviceCandidate);
       rawStreams = [...directStreams, ...resolvedCandidates.flat().filter(Boolean)];
+      const workerReported4KHDHub = workerData.providers && Object.prototype.hasOwnProperty.call(workerData.providers, "4khdhub");
+      const worker4KCount = Number(((_b = (_a = workerData.providers) == null ? void 0 : _a["4khdhub"]) == null ? void 0 : _b.count) || 0);
+      if (workerReported4KHDHub && worker4KCount === 0) {
+        const discover4KHDHub = fourkHDHubModule.discoverCandidates || ((_c = fourkHDHubModule.default) == null ? void 0 : _c.discoverCandidates);
+        if (typeof discover4KHDHub === "function") {
+          try {
+            const localCandidates = yield discover4KHDHub(tmdbId, mediaType, season, episode);
+            const localResolved = yield mapConcurrent2(localCandidates, 4, resolveDeviceCandidate);
+            rawStreams.push(...localResolved.flat().filter(Boolean));
+          } catch (_) {
+          }
+        }
+      }
     } else {
       rawStreams = yield runLocalDiscoveryFallback(tmdbId, mediaType, season, episode);
     }
