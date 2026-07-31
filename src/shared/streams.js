@@ -127,8 +127,10 @@ function normalizeDisplayQuality(value) {
 }
 
 function qualityOrderPrefix(quality) {
-  const map = { '4K': '01', '1080p': '02', '720p': '03', '480p': '04', '360p': '05', '240p': '06' };
-  return map[quality] || '99';
+  // Nuvio alphabetically re-sorts stream names. Zero-width prefixes retain
+  // quality ordering without displaying ugly numeric ranks in the UI.
+  const rank = { '4K': 1, '1080p': 2, '720p': 3, '480p': 4, '360p': 5, '240p': 6 }[quality] || 9;
+  return '\u200B'.repeat(rank);
 }
 
 function uniqueExactStreams(streams) {
@@ -143,7 +145,7 @@ function uniqueExactStreams(streams) {
     seen.add(key);
 
     const provider = stream.provider || 'StreamPlay';
-    const namePrefix = `${qualityOrderPrefix(quality)} • ${provider} • ${quality} • ${source}`;
+    const namePrefix = `${qualityOrderPrefix(quality)}${provider} • ${quality} • ${source}`;
     valid.push({
       ...stream,
       name: stream.name && stream.name.startsWith(qualityOrderPrefix(quality)) ? stream.name : namePrefix,

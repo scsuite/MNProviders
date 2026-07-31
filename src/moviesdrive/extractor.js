@@ -1,5 +1,6 @@
 import cheerio from 'cheerio-without-node-native';
 import { HEADERS } from './constants.js';
+import DOMAINS from '../config/domains.js';
 
 function absoluteUrl(value, base) {
   if (!value || typeof value !== 'string') return null;
@@ -199,8 +200,7 @@ async function extractGdflix(url, referer, hint = {}) {
     const pageCandidates = [...new Set([
       redirected,
       first.ok && !redirected ? (first.url || url) : null,
-      id ? `https://new3.gdflix.cfd/file/${id}` : null,
-      id ? `https://new2.gdflix.cfd/file/${id}` : null
+      ...DOMAINS.GDFLIX_MIRRORS.map(base => id ? `${base}/file/${id}` : null)
     ].filter(Boolean))];
 
     const pages = await Promise.all(pageCandidates.map(async pageUrl => {

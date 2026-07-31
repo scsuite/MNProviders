@@ -79,6 +79,25 @@ var __async = (__this, __arguments, generator) => {
   });
 };
 
+// src/config/domains.js
+var require_domains = __commonJS({
+  "src/config/domains.js"(exports, module2) {
+    module2.exports = Object.freeze({
+      TMDB_API: "https://api.themoviedb.org/3",
+      PHISHER_DOMAINS: "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json",
+      WORKER: "https://lucky-star-3059.salman-sohail93.workers.dev",
+      MOVIESDRIVE_FALLBACK: "https://new1.moviesdrive.christmas",
+      VEGAMOVIES_FALLBACK: "https://vegamovies.catering",
+      CASTLE_API: "https://api.hlowb.com",
+      NEXDRIVE: "https://nexdrive.fit",
+      HUBCLOUD: "https://hubcloud.cx",
+      VCLOUD: "https://vcloud.zip",
+      FASTDL: "https://fastdl.zip",
+      GDFLIX_MIRRORS: ["https://new3.gdflix.cfd", "https://new2.gdflix.cfd"]
+    });
+  }
+});
+
 // src/shared/html.js
 var require_html = __commonJS({
   "src/shared/html.js"(exports, module2) {
@@ -334,8 +353,8 @@ var require_streams = __commonJS({
       return rank === 2160 ? "4K" : rank > 0 ? `${rank}p` : "Unknown";
     }
     function qualityOrderPrefix(quality) {
-      const map = { "4K": "01", "1080p": "02", "720p": "03", "480p": "04", "360p": "05", "240p": "06" };
-      return map[quality] || "99";
+      const rank = { "4K": 1, "1080p": 2, "720p": 3, "480p": 4, "360p": 5, "240p": 6 }[quality] || 9;
+      return "\u200B".repeat(rank);
     }
     function uniqueExactStreams2(streams) {
       const seen = /* @__PURE__ */ new Set();
@@ -350,7 +369,7 @@ var require_streams = __commonJS({
           continue;
         seen.add(key);
         const provider = stream.provider || "StreamPlay";
-        const namePrefix = `${qualityOrderPrefix(quality)} \u2022 ${provider} \u2022 ${quality} \u2022 ${source}`;
+        const namePrefix = `${qualityOrderPrefix(quality)}${provider} \u2022 ${quality} \u2022 ${source}`;
         valid.push(__spreadProps(__spreadValues({}, stream), {
           name: stream.name && stream.name.startsWith(qualityOrderPrefix(quality)) ? stream.name : namePrefix,
           quality,
@@ -418,7 +437,8 @@ module.exports = __toCommonJS(moviesdrive_exports);
 var import_cheerio_without_node_native2 = __toESM(require("cheerio-without-node-native"));
 
 // src/moviesdrive/constants.js
-var MAIN_URL = "https://new1.moviesdrive.christmas";
+var import_domains = __toESM(require_domains());
+var MAIN_URL = import_domains.default.MOVIESDRIVE_FALLBACK;
 var HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
   "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
@@ -428,6 +448,7 @@ var TMDB_API_KEY = "439c478a771f35c05022f9feabcca01c";
 
 // src/moviesdrive/extractor.js
 var import_cheerio_without_node_native = __toESM(require("cheerio-without-node-native"));
+var import_domains2 = __toESM(require_domains());
 function absoluteUrl(value, base) {
   if (!value || typeof value !== "string")
     return null;
@@ -672,8 +693,7 @@ function extractGdflix(_0, _1) {
       const pageCandidates = [...new Set([
         redirected,
         first.ok && !redirected ? first.url || url : null,
-        id ? `https://new3.gdflix.cfd/file/${id}` : null,
-        id ? `https://new2.gdflix.cfd/file/${id}` : null
+        ...import_domains2.default.GDFLIX_MIRRORS.map((base) => id ? `${base}/file/${id}` : null)
       ].filter(Boolean))];
       const pages = yield Promise.all(pageCandidates.map((pageUrl) => __async(this, null, function* () {
         try {
@@ -750,14 +770,15 @@ function extractHost(url, referer, hint = {}) {
 
 // src/moviesdrive/index.js
 var import_streams = __toESM(require_streams());
-var DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
+var import_domains3 = __toESM(require_domains());
+var DOMAINS_URL = import_domains3.default.PHISHER_DOMAINS;
 function normalizeType(value) {
   return /^(tv|series|show)$/i.test(String(value || "")) ? "tv" : "movie";
 }
 function getMetadata(tmdbId, mediaType) {
   return __async(this, null, function* () {
     var _a;
-    const response = yield fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`, { headers: HEADERS });
+    const response = yield fetch(`${import_domains3.default.TMDB_API}/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`, { headers: HEADERS });
     if (!response.ok)
       return null;
     const data = yield response.json();

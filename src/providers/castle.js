@@ -42,8 +42,9 @@ var __async = (__this, __arguments, generator) => {
 
 // src/castle/constants.js
 var TMDB_API_KEY = "439c478a771f35c05022f9feabcca01c";
-var TMDB_BASE_URL = "https://api.themoviedb.org/3";
-var CASTLE_BASE = "https://api.hlowb.com";
+var DOMAIN_CONFIG = require("../config/domains");
+var TMDB_BASE_URL = DOMAIN_CONFIG.TMDB_API;
+var CASTLE_BASE = DOMAIN_CONFIG.CASTLE_API;
 var PKG = "com.external.castle";
 var CHANNEL = "IndiaA";
 var CLIENT = "1";

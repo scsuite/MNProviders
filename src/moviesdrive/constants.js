@@ -1,4 +1,6 @@
-export const MAIN_URL = 'https://new1.moviesdrive.christmas';
+import DOMAINS from '../config/domains.js';
+
+export const MAIN_URL = DOMAINS.MOVIESDRIVE_FALLBACK;
 
 export const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',

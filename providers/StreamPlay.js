@@ -82,6 +82,25 @@ var __async = (__this, __arguments, generator) => {
   });
 };
 
+// src/config/domains.js
+var require_domains = __commonJS({
+  "src/config/domains.js"(exports2, module2) {
+    module2.exports = Object.freeze({
+      TMDB_API: "https://api.themoviedb.org/3",
+      PHISHER_DOMAINS: "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json",
+      WORKER: "https://lucky-star-3059.salman-sohail93.workers.dev",
+      MOVIESDRIVE_FALLBACK: "https://new1.moviesdrive.christmas",
+      VEGAMOVIES_FALLBACK: "https://vegamovies.catering",
+      CASTLE_API: "https://api.hlowb.com",
+      NEXDRIVE: "https://nexdrive.fit",
+      HUBCLOUD: "https://hubcloud.cx",
+      VCLOUD: "https://vcloud.zip",
+      FASTDL: "https://fastdl.zip",
+      GDFLIX_MIRRORS: ["https://new3.gdflix.cfd", "https://new2.gdflix.cfd"]
+    });
+  }
+});
+
 // src/providers/castle.js
 var require_castle = __commonJS({
   "src/providers/castle.js"(exports2, module2) {
@@ -123,8 +142,9 @@ var require_castle = __commonJS({
       });
     };
     var TMDB_API_KEY2 = "439c478a771f35c05022f9feabcca01c";
-    var TMDB_BASE_URL = "https://api.themoviedb.org/3";
-    var CASTLE_BASE = "https://api.hlowb.com";
+    var DOMAIN_CONFIG = require_domains();
+    var TMDB_BASE_URL = DOMAIN_CONFIG.TMDB_API;
+    var CASTLE_BASE = DOMAIN_CONFIG.CASTLE_API;
     var PKG = "com.external.castle";
     var CHANNEL = "IndiaA";
     var CLIENT = "1";
@@ -969,8 +989,8 @@ var require_streams = __commonJS({
       return rank === 2160 ? "4K" : rank > 0 ? `${rank}p` : "Unknown";
     }
     function qualityOrderPrefix(quality) {
-      const map = { "4K": "01", "1080p": "02", "720p": "03", "480p": "04", "360p": "05", "240p": "06" };
-      return map[quality] || "99";
+      const rank = { "4K": 1, "1080p": 2, "720p": 3, "480p": 4, "360p": 5, "240p": 6 }[quality] || 9;
+      return "\u200B".repeat(rank);
     }
     function uniqueExactStreams3(streams) {
       const seen = /* @__PURE__ */ new Set();
@@ -985,7 +1005,7 @@ var require_streams = __commonJS({
           continue;
         seen.add(key);
         const provider = stream.provider || "StreamPlay";
-        const namePrefix = `${qualityOrderPrefix(quality)} \u2022 ${provider} \u2022 ${quality} \u2022 ${source}`;
+        const namePrefix = `${qualityOrderPrefix(quality)}${provider} \u2022 ${quality} \u2022 ${source}`;
         valid.push(__spreadProps(__spreadValues({}, stream), {
           name: stream.name && stream.name.startsWith(qualityOrderPrefix(quality)) ? stream.name : namePrefix,
           quality,
@@ -1044,12 +1064,13 @@ var require_streams = __commonJS({
 // src/providers/vegamovies.js
 var require_vegamovies = __commonJS({
   "src/providers/vegamovies.js"(exports2, module2) {
-    var TMDB_API = "https://api.themoviedb.org/3";
+    var DOMAINS5 = require_domains();
+    var TMDB_API = DOMAINS5.TMDB_API;
     var { resolveVCloud } = require_vcloud();
     var { mapConcurrent: mapConcurrent3, uniqueExactStreams: uniqueExactStreams3 } = require_streams();
     var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
-    var DOMAINS_URL2 = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
-    var VEGA_FALLBACK = "https://vegamovies.catering";
+    var DOMAINS_URL2 = DOMAINS5.PHISHER_DOMAINS;
+    var VEGA_FALLBACK = DOMAINS5.VEGAMOVIES_FALLBACK;
     var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
     function requestText(url, referer) {
       return __async(this, null, function* () {
@@ -1310,10 +1331,11 @@ var require_vegamovies = __commonJS({
 });
 
 // src/moviesdrive/constants.js
-var MAIN_URL, HEADERS, TMDB_API_KEY;
+var import_domains, MAIN_URL, HEADERS, TMDB_API_KEY;
 var init_constants = __esm({
   "src/moviesdrive/constants.js"() {
-    MAIN_URL = "https://new1.moviesdrive.christmas";
+    import_domains = __toESM(require_domains());
+    MAIN_URL = import_domains.default.MOVIESDRIVE_FALLBACK;
     HEADERS = {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
       "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
@@ -1568,8 +1590,7 @@ function extractGdflix(_0, _1) {
       const pageCandidates = [...new Set([
         redirected,
         first.ok && !redirected ? first.url || url : null,
-        id ? `https://new3.gdflix.cfd/file/${id}` : null,
-        id ? `https://new2.gdflix.cfd/file/${id}` : null
+        ...import_domains2.default.GDFLIX_MIRRORS.map((base) => id ? `${base}/file/${id}` : null)
       ].filter(Boolean))];
       const pages = yield Promise.all(pageCandidates.map((pageUrl) => __async(this, null, function* () {
         try {
@@ -1643,11 +1664,12 @@ function extractGdflix(_0, _1) {
 function extractHost(url, referer, hint = {}) {
   return /gdflix|gdlink/i.test(url) ? extractGdflix(url, referer, hint) : extractHubCloud(url, referer);
 }
-var import_cheerio_without_node_native;
+var import_cheerio_without_node_native, import_domains2;
 var init_extractor = __esm({
   "src/moviesdrive/extractor.js"() {
     import_cheerio_without_node_native = __toESM(require("cheerio-without-node-native"));
     init_constants();
+    import_domains2 = __toESM(require_domains());
   }
 });
 
@@ -1665,7 +1687,7 @@ function normalizeType(value) {
 function getMetadata(tmdbId, mediaType) {
   return __async(this, null, function* () {
     var _a;
-    const response = yield fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`, { headers: HEADERS });
+    const response = yield fetch(`${import_domains3.default.TMDB_API}/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`, { headers: HEADERS });
     if (!response.ok)
       return null;
     const data = yield response.json();
@@ -1891,14 +1913,15 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
     }
   });
 }
-var import_cheerio_without_node_native2, import_streams, DOMAINS_URL, moviesdrive_default;
+var import_cheerio_without_node_native2, import_streams, import_domains3, DOMAINS_URL, moviesdrive_default;
 var init_moviesdrive = __esm({
   "src/moviesdrive/index.js"() {
     import_cheerio_without_node_native2 = __toESM(require("cheerio-without-node-native"));
     init_constants();
     init_extractor();
     import_streams = __toESM(require_streams());
-    DOMAINS_URL = "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json";
+    import_domains3 = __toESM(require_domains());
+    DOMAINS_URL = import_domains3.default.PHISHER_DOMAINS;
     moviesdrive_default = { discoverCandidates, resolveCandidate, getStreams };
   }
 });
@@ -1908,7 +1931,8 @@ var { getStreams: getCastleStreams } = require_castle();
 var vegaModule = require_vegamovies();
 var mdModule = (init_moviesdrive(), __toCommonJS(moviesdrive_exports));
 var { mapConcurrent: mapConcurrent2, uniqueExactStreams: uniqueExactStreams2 } = require_streams();
-var WORKER_BASE = "https://lucky-star-3059.salman-sohail93.workers.dev";
+var DOMAINS4 = require_domains();
+var WORKER_BASE = DOMAINS4.WORKER;
 function fetchWorkerData(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
     try {

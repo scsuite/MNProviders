@@ -1,9 +1,10 @@
-const TMDB_API = 'https://api.themoviedb.org/3';
+const DOMAINS = require('../config/domains');
+const TMDB_API = DOMAINS.TMDB_API;
 const { resolveVCloud } = require('./vcloud');
 const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 const TMDB_KEY = '439c478a771f35c05022f9feabcca01c';
-const DOMAINS_URL = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
-const VEGA_FALLBACK = 'https://vegamovies.catering';
+const DOMAINS_URL = DOMAINS.PHISHER_DOMAINS;
+const VEGA_FALLBACK = DOMAINS.VEGAMOVIES_FALLBACK;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 
 async function requestText(url, referer) {

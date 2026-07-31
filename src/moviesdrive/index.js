@@ -2,15 +2,16 @@ import cheerio from 'cheerio-without-node-native';
 import { HEADERS, MAIN_URL, TMDB_API_KEY } from './constants.js';
 import { expandMovieButton, extractHost } from './extractor.js';
 import { mapConcurrent, uniqueExactStreams } from '../shared/streams.js';
+import DOMAINS from '../config/domains.js';
 
-const DOMAINS_URL = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
+const DOMAINS_URL = DOMAINS.PHISHER_DOMAINS;
 
 function normalizeType(value) {
   return /^(tv|series|show)$/i.test(String(value || '')) ? 'tv' : 'movie';
 }
 
 async function getMetadata(tmdbId, mediaType) {
-  const response = await fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`, { headers: HEADERS });
+  const response = await fetch(`${DOMAINS.TMDB_API}/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`, { headers: HEADERS });
   if (!response.ok) return null;
   const data = await response.json();
   return { title: mediaType === 'tv' ? data.name : data.title, imdbId: data.external_ids?.imdb_id };

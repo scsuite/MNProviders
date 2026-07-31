@@ -2,8 +2,9 @@ const { getStreams: getCastleStreams } = require('./castle');
 const vegaModule = require('./vegamovies');
 const mdModule = require('../moviesdrive/index');
 const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
+const DOMAINS = require('../config/domains');
 
-const WORKER_BASE = 'https://lucky-star-3059.salman-sohail93.workers.dev';
+const WORKER_BASE = DOMAINS.WORKER;
 
 async function fetchWorkerData(tmdbId, mediaType, season, episode) {
   try {

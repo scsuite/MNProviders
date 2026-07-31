@@ -1,19 +1,19 @@
 {
   "name": "MNProviders",
-  "version": "1.0.29",
+  "version": "1.0.30",
   "description": "Nuvio-compatible Phisher StreamPlay port",
   "scrapers": [
     {
       "id": "StreamPlay",
       "name": "StreamPlay",
       "description": "Worker-first MoviesDrive, VegaMovies and Castle with device-side protected host resolution",
-      "version": "1.0.16",
+      "version": "1.0.17",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/StreamPlay.js?v=116",
+      "filename": "providers/StreamPlay.js?v=117",
       "source": "src/providers/streamplay.js",
       "enabled": true,
       "formats": [
@@ -32,13 +32,13 @@
       "id": "MoviesDrive",
       "name": "MoviesDrive",
       "description": "Independent MoviesDrive provider with HubCloud and Phisher-style GDFlix extraction",
-      "version": "2.0.11",
+      "version": "2.0.12",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/MoviesDrive.js?v=211",
+      "filename": "providers/MoviesDrive.js?v=212",
       "source": "src/moviesdrive/index.js",
       "enabled": true,
       "formats": [
