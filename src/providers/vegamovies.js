@@ -164,7 +164,7 @@ function qualityFrom(label) {
   return match[1] === '2160' ? '4K' : `${match[1]}p`;
 }
 
-async function getStreams(tmdbId, mediaType, season, episode) {
+async function getStreams(tmdbId, mediaType, season, episode, options = {}) {
   if (!tmdbId || !['movie', 'tv'].includes(mediaType)) return [];
   if (mediaType === 'tv' && (!season || !episode)) return [];
   try {
@@ -178,7 +178,8 @@ async function getStreams(tmdbId, mediaType, season, episode) {
     const releases = mediaType === 'movie'
       ? movieReleaseLinks(detail, base)
       : episodeReleaseLinks(detail, base, Number(season), Number(episode));
-    const selected = releases.slice(0, 10);
+    const maxReleases = Math.max(1, Number(options.maxReleases) || 10);
+    const selected = releases.slice(0, maxReleases);
     const resolved = await Promise.all(selected.map(async release => {
       try {
         const directLinks = await resolveRelease(release.url, base, mediaType === 'tv' ? Number(episode) : null, release.label);
