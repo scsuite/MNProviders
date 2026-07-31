@@ -1,19 +1,19 @@
 {
   "name": "MNProviders",
-  "version": "1.0.34",
+  "version": "1.0.35",
   "description": "Nuvio-compatible Phisher StreamPlay port",
   "scrapers": [
     {
       "id": "StreamPlay",
       "name": "StreamPlay",
-      "description": "Worker-first MoviesDrive, VegaMovies, Movies4u and Castle with device-side protected host resolution",
-      "version": "1.0.21",
+      "description": "Worker-first MoviesDrive, VegaMovies, Movies4u, 4KHDHub and Castle with device-side protected host resolution",
+      "version": "1.0.22",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/StreamPlay.js?v=121",
+      "filename": "providers/StreamPlay.js?v=122",
       "source": "src/providers/streamplay.js",
       "enabled": true,
       "formats": [
