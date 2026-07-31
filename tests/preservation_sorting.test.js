@@ -103,10 +103,63 @@ async function testLinkPreservationAndSorting() {
   assert.deepStrictEqual(hubcloudRes, [], `Expected failed HubCloud candidate to return [], got ${JSON.stringify(hubcloudRes)}`);
   assert.deepStrictEqual(vcloudRes, [], `Expected failed VCloud candidate to return [], got ${JSON.stringify(vcloudRes)}`);
   console.log('PASS: Verified failed protected resolvers (HubCloud/VCloud) return [] and NEVER leak raw candidate URLs');
+
+  console.log('--- Test 7: Sorter performs zero fetch/network calls and preserves quality rank priority ---');
+  const originalFetch = global.fetch;
+  let fetchCallCount = 0;
+  global.fetch = async () => { fetchCallCount++; return { ok: false }; };
+
+  const testList = [
+    { provider: 'MoviesDrive', source: 'HubCloud Pixel 10Gbps', quality: '1080p', url: 'https://cdn.test/pixel1080.mkv' },
+    { provider: 'MoviesDrive', source: 'HubCloud FSL', quality: '720p', url: 'https://cdn.test/fsl720.mkv' },
+    { provider: 'vegamovies', source: 'FastDL', quality: '1080p', url: 'https://cdn.test/fastdl1080.mp4' },
+    { provider: 'MoviesDrive', source: 'HubCloud FSL', quality: '1080p', url: 'https://cdn.test/fsl1080.mkv' }
+  ];
+
+  const sortedList = uniqueExactStreams(testList);
+  global.fetch = originalFetch;
+
+  assert.strictEqual(fetchCallCount, 0, `Expected 0 network calls during sorting, got ${fetchCallCount}`);
+  console.log('PASS: uniqueExactStreams performed zero network/fetch calls');
+
+  // Quality rank priority check: 1080p must all be above 720p
+  const sortedQualities = sortedList.map(s => s.quality);
+  assert.deepStrictEqual(sortedQualities, ['1080p', '1080p', '1080p', '720p'], '1080p streams must remain above 720p');
+  console.log('PASS: Quality rank always takes priority over seekability (1080p non-seekable > 720p seekable)');
+
+  console.log('--- Test 8: Within equal quality: seekable (true) > unknown > non-seekable (false) ---');
+  const same1080pList = [
+    { provider: 'MoviesDrive', source: 'HubCloud Pixel 10Gbps', quality: '1080p', url: 'https://cdn.test/pixel1080.mkv' }, // false
+    { provider: 'vegamovies', source: 'FastDL', quality: '1080p', url: 'https://cdn.test/fastdl1080.mp4' }, // unknown
+    { provider: 'MoviesDrive', source: 'HubCloud FSL', quality: '1080p', url: 'https://cdn.test/fsl1080.mkv' } // true
+  ];
+
+  const sorted1080p = uniqueExactStreams(same1080pList);
+  const sources1080p = sorted1080p.map(s => s.source);
+  assert.deepStrictEqual(sources1080p, ['HubCloud FSL', 'FastDL', 'HubCloud Pixel 10Gbps']);
+  const invisiblePrefixLengths = sorted1080p.map(s => (s.name.match(/^\u200B+/) || [''])[0].length);
+  assert.deepStrictEqual(invisiblePrefixLengths, [4, 5, 6], 'Nuvio name prefixes must preserve same-quality seekability order');
+  console.log('PASS: Within 1080p tier: seekable (FSL) > unknown (FastDL) > non-seekable (Pixel 10Gbps)');
+
+  console.log('--- Test 9: Idempotent labeling & prefix protection ---');
+  const pixelStream = { provider: 'MoviesDrive', source: 'HubCloud Pixel 10Gbps', quality: '1080p', url: 'https://cdn.test/pixel1080.mkv' };
+  const firstPass = uniqueExactStreams([pixelStream]);
+  assert(firstPass[0].name.includes('(No Seek)'), 'First pass should add (No Seek)');
+
+  const secondPass = uniqueExactStreams(firstPass);
+  const matches = (secondPass[0].name.match(/\(No Seek\)/g) || []).length;
+  assert.strictEqual(matches, 1, `Expected exactly 1 (No Seek) label, got ${matches}`);
+
+  const fastdlStream = { provider: 'vegamovies', source: 'FastDL', quality: '1080p', url: 'https://cdn.test/fastdl1080.mp4' };
+  const fastdlSorted = uniqueExactStreams([fastdlStream]);
+  assert(!fastdlSorted[0].name.includes('(No Seek)'), 'Unknown seekability stream (FastDL) must NOT be labeled (No Seek)');
+  const castleMp4 = uniqueExactStreams([{ provider: 'castle', source: 'Castle MP4', quality: '1080p', url: 'https://cdn.test/castle.mp4' }]);
+  assert.strictEqual(castleMp4[0].seekable, 'unknown', 'Only Castle HLS, not every Castle stream, should be statically seekable');
+  console.log('PASS: Labeling is idempotent (single (No Seek) label for false, zero for unknown)');
 }
 
 testLinkPreservationAndSorting().then(() => {
-  console.log('\n✅ ALL PRESERVATION & SORTING UNIT TESTS PASSED!');
+  console.log('\n✅ ALL PRESERVATION, SEEKABILITY & SORTING UNIT TESTS PASSED!');
 }).catch(err => {
   console.error('❌ TEST FAILURE:', err);
   process.exit(1);

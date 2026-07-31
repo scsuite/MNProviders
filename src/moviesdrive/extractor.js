@@ -203,11 +203,19 @@ async function extractGdflix(url, referer, hint = {}) {
       ...DOMAINS.GDFLIX_MIRRORS.map(base => id ? `${base}/file/${id}` : null)
     ].filter(Boolean))];
 
+    const isCloudflareChallenge = (status, html) => status === 403 || /just a moment|cf-chl|turnstile|challenge-running/i.test(String(html || ''));
+
     const pages = await Promise.all(pageCandidates.map(async pageUrl => {
       try {
-        if (pageUrl === (first.url || url) && first.ok && !redirected) return { html: firstHtml, pageUrl };
+        if (pageUrl === (first.url || url) && first.ok && !redirected) {
+          if (isCloudflareChallenge(first.status, firstHtml)) return null;
+          return { html: firstHtml, pageUrl };
+        }
         const response = await fetch(pageUrl, { headers: { ...HEADERS, Referer: url } });
-        return response.ok ? { html: await response.text(), pageUrl: response.url || pageUrl } : null;
+        if (!response.ok) return null;
+        const html = await response.text();
+        if (isCloudflareChallenge(response.status, html)) return null;
+        return { html, pageUrl: response.url || pageUrl };
       } catch (_) { return null; }
     }));
 

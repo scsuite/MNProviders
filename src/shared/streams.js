@@ -127,10 +127,40 @@ function normalizeDisplayQuality(value) {
 }
 
 function qualityOrderPrefix(quality) {
-  // Nuvio alphabetically re-sorts stream names. Zero-width prefixes retain
-  // quality ordering without displaying ugly numeric ranks in the UI.
   const rank = { '4K': 1, '1080p': 2, '720p': 3, '480p': 4, '360p': 5, '240p': 6 }[quality] || 9;
   return '\u200B'.repeat(rank);
+}
+
+function streamOrderPrefix(quality, seekable) {
+  const qualityPosition = { '4K': 0, '1080p': 1, '720p': 2, '480p': 3, '360p': 4, '240p': 5 }[quality] ?? 8;
+  const seekPosition = seekable === true ? 1 : seekable === false ? 3 : 2;
+  return '\u200B'.repeat((qualityPosition * 3) + seekPosition);
+}
+
+function getSeekableHint(stream) {
+  if (stream && (stream.seekable === true || stream.seekable === false)) {
+    return stream.seekable;
+  }
+  const url = String(stream?.url || '').toLowerCase();
+  const source = String(stream?.source || stream?.name || '').toLowerCase();
+
+  if (/hubcloud\s*fsl|\bfsl\b/i.test(source) || /cloudflarestorage\.com\/hub\//i.test(url)) {
+    return true;
+  }
+  if (/\.m3u8(?:$|[?#])/i.test(url) || (/castle/i.test(source) && /hls|m3u8/i.test(`${source} ${url}`))) {
+    return true;
+  }
+  if (/hubcloud\s*pixel\s*10gbps|10gbps/i.test(source)) {
+    return false;
+  }
+  return 'unknown';
+}
+
+function seekableOrderRank(hint) {
+  if (hint === true) return 2;
+  if (hint === 'unknown') return 1;
+  if (hint === false) return 0;
+  return 1;
 }
 
 function uniqueExactStreams(streams) {
@@ -139,22 +169,41 @@ function uniqueExactStreams(streams) {
   for (const stream of streams || []) {
     if (!stream || !stream.url) continue;
     const quality = normalizeDisplayQuality(stream.quality || stream.name || stream.title);
-    const source = stream.source || stream.provider || 'Direct';
-    const key = `${quality}|${source}|${stream.url}`;
+    const rawSource = stream.source || stream.provider || 'Direct';
+    const canonicalSource = rawSource.replace(/\s*\([^)]*no\s*seek[^)]*\)/gi, '').trim();
+
+    const key = `${quality}|${canonicalSource}|${stream.url}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
     const provider = stream.provider || 'StreamPlay';
-    const namePrefix = `${qualityOrderPrefix(quality)}${provider} • ${quality} • ${source}`;
+    const seekable = getSeekableHint({ ...stream, source: canonicalSource });
+
+    let displaySource = canonicalSource;
+    if (seekable === false && !/\(no\s*seek\)/i.test(displaySource)) {
+      displaySource = `${displaySource} (No Seek)`;
+    }
+
+    // Nuvio alphabetically re-sorts names. A composite invisible prefix keeps
+    // both quality and seekability ordering intact in the rendered UI.
+    const prefix = streamOrderPrefix(quality, seekable);
+    const name = `${prefix}${provider} • ${quality} • ${displaySource}`;
+
     valid.push({
       ...stream,
-      name: stream.name && stream.name.startsWith(qualityOrderPrefix(quality)) ? stream.name : namePrefix,
+      name,
       quality,
-      source,
-      provider
+      source: canonicalSource,
+      provider,
+      seekable
     });
   }
-  return valid.sort((a, b) => qualityRank(b.quality) - qualityRank(a.quality));
+
+  return valid.sort((a, b) => {
+    const qDiff = qualityRank(b.quality) - qualityRank(a.quality);
+    if (qDiff !== 0) return qDiff;
+    return seekableOrderRank(b.seekable) - seekableOrderRank(a.seekable);
+  });
 }
 
 async function mapConcurrent(items, concurrency, fn) {
@@ -182,6 +231,46 @@ async function mapConcurrent(items, concurrency, fn) {
   return results;
 }
 
+async function checkStreamRange(url, headers = {}, timeoutMs = 3000) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller ? controller.signal : undefined,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',
+        Range: 'bytes=1000000-1001023',
+        ...headers
+      }
+    });
+    if (timer) clearTimeout(timer);
+    const contentRange = res.headers ? res.headers.get('content-range') : null;
+    const acceptRanges = res.headers ? res.headers.get('accept-ranges') : null;
+    const contentType = res.headers ? res.headers.get('content-type') : null;
+    const status = res.status;
+    const seekable = status === 206 || !!contentRange || acceptRanges === 'bytes';
+
+    if (res.body && typeof res.body.cancel === 'function') {
+      try { await res.body.cancel(); } catch (_) {}
+    }
+
+    return {
+      ok: res.ok || status === 206,
+      status,
+      finalUrl: res.url || url,
+      contentType,
+      contentRange,
+      acceptRanges,
+      seekable
+    };
+  } catch (error) {
+    if (timer) clearTimeout(timer);
+    return { ok: false, status: 0, seekable: false, error: error.message };
+  }
+}
+
 module.exports = {
   MEDIA_EXTENSION,
   PLACEHOLDER_MEDIA,
@@ -193,8 +282,11 @@ module.exports = {
   qualityRank,
   normalizeDisplayQuality,
   qualityOrderPrefix,
+  streamOrderPrefix,
+  getSeekableHint,
   resolveFinalUrl,
   uniqueStreams,
   uniqueExactStreams,
-  mapConcurrent
+  mapConcurrent,
+  checkStreamRange
 };

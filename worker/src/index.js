@@ -4,7 +4,7 @@ import movies4uModule from '../../src/providers/movies4u.js';
 import castleModule from '../../src/providers/castle.js';
 import domainConfig from '../../src/config/domains.js';
 
-const VERSION = '1.0.7';
+const VERSION = '1.0.8';
 const DEFAULT_TIMEOUT_MS = 12000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
@@ -94,19 +94,24 @@ async function probe(url, referer) {
       }
     });
     const body = await response.text();
+    const isCF = response.status === 403 || /just a moment|cf-chl|turnstile|challenge-running/i.test(body);
+    let finalHost = '';
+    try { finalHost = new URL(response.url).hostname; } catch (_) {}
     return {
       ok: response.ok,
       status: response.status,
       finalUrl: response.url,
+      finalHost,
       contentType: response.headers.get('content-type'),
+      cloudflareChallenge: isCF,
       bytes: body.length,
-      elapsedMs: Date.now() - started,
-      preview: body.slice(0, 160).replace(/\s+/g, ' ')
+      elapsedMs: Date.now() - started
     };
   } catch (error) {
     return { ok: false, error: error?.message || String(error), elapsedMs: Date.now() - started };
   }
 }
+
 
 async function diagnostics() {
   const domainsUrl = domainConfig.PHISHER_DOMAINS;

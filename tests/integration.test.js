@@ -1,5 +1,6 @@
 const assert = require('assert');
 const { getStreams: getStreamPlayStreams, WORKER_BASE } = require('../src/providers/streamplay');
+const { checkStreamRange, mapConcurrent } = require('../src/shared/streams');
 
 async function measureWorkerEndpoint(tmdbId, type, season, episode) {
   const started = Date.now();
@@ -25,6 +26,31 @@ async function measureWorkerEndpoint(tmdbId, type, season, episode) {
   }
 }
 
+function selectRepresentativeHosts(streams) {
+  const seenTypes = new Set();
+  const representative = [];
+
+  for (const stream of streams) {
+    let hostType = 'other';
+    const source = String(stream.source || stream.name || '').toLowerCase();
+    const url = String(stream.url || '').toLowerCase();
+
+    if (/fsl/i.test(source)) hostType = 'hubcloud_fsl';
+    else if (/10gbps/i.test(source)) hostType = 'pixel_10gbps';
+    else if (/fastdl/i.test(source)) hostType = 'fastdl';
+    else if (/castle|\.m3u8/i.test(source + ' ' + url)) hostType = 'castle_hls';
+    else if (/pixeldrain/i.test(source)) hostType = 'pixeldrain';
+    else if (/gdflix/i.test(source)) hostType = 'gdflix';
+
+    if (!seenTypes.has(hostType)) {
+      seenTypes.add(hostType);
+      representative.push({ hostType, stream });
+    }
+  }
+
+  return representative;
+}
+
 async function runIntegrationTest() {
   console.log('=== Integration Test 1: Movie Stream Discovery & Resolution (TMDB 603) ===');
 
@@ -47,7 +73,26 @@ async function runIntegrationTest() {
   assert(sampleMovie.url && /^https?:\/\//i.test(sampleMovie.url), `Valid playable HTTP(S) stream URL required`);
   console.log(`PASS: Movie Stream Sample: "${sampleMovie.name}" -> ${sampleMovie.url.slice(0, 70)}...`);
 
-  console.log('\n=== Integration Test 2: TV Episode Stream Discovery & Resolution (TMDB 108978 S01E01) ===');
+  console.log('\n=== Integration Test 2: Representative Host Range & Seeking Probes ===');
+  const representativeHosts = selectRepresentativeHosts(movieStreams);
+  console.log(`Selected ${representativeHosts.length} representative unique host types for diagnostic Range probes (concurrency = 2, timeout = 3s)...`);
+
+  const probeStart = Date.now();
+  const probeResults = await mapConcurrent(representativeHosts, 2, async (item) => {
+    const res = await checkStreamRange(item.stream.url, item.stream.headers, 3000);
+    return { hostType: item.hostType, streamName: item.stream.name, ...res };
+  });
+  const probeDurationMs = Date.now() - probeStart;
+
+  for (const res of probeResults.filter(Boolean)) {
+    console.log(`[Host Diagnostic Probing: ${res.hostType}] ${res.streamName}`);
+    console.log(`  Status: ${res.status} | Content-Type: ${res.contentType || 'null'}`);
+    console.log(`  Content-Range: ${res.contentRange || 'none'} | Accept-Ranges: ${res.acceptRanges || 'none'}`);
+    console.log(`  Confirmed Seekable (HTTP 206/Content-Range): ${res.seekable}`);
+  }
+  console.log(`Diagnostic Range Probing Time: ${probeDurationMs} ms (measured separately from StreamPlay discovery)`);
+
+  console.log('\n=== Integration Test 3: TV Episode Stream Discovery & Resolution (TMDB 108978 S01E01) ===');
 
   const tvWorkerProbe = await measureWorkerEndpoint('108978', 'tv', 1, 1);
   console.log(`Worker TV Discovery Time: ${tvWorkerProbe.elapsedMs} ms | Cache Status: ${tvWorkerProbe.cacheHeader} | Status: ${tvWorkerProbe.status || tvWorkerProbe.error}`);
@@ -71,10 +116,11 @@ async function runIntegrationTest() {
   console.log('\n=== Timings & Performance Summary ===');
   console.log(`Movie - Worker Discovery: ${movieWorkerProbe.elapsedMs}ms | Client Resolution: ~${movieResolutionTimeMs}ms | Total: ${movieTotalTimeMs}ms | Cache: ${movieWorkerProbe.cacheHeader}`);
   console.log(`TV    - Worker Discovery: ${tvWorkerProbe.elapsedMs}ms | Client Resolution: ~${tvResolutionTimeMs}ms | Total: ${tvTotalTimeMs}ms | Cache: ${tvWorkerProbe.cacheHeader}`);
+  console.log(`Diagnostic Range Probes: ${probeDurationMs}ms (reported separately)`);
 }
 
 runIntegrationTest().then(() => {
-  console.log('\n✅ INTEGRATION TESTS PASSED WITH HONEST TIMING MEASUREMENTS!');
+  console.log('\n✅ INTEGRATION TESTS & REPRESENTATIVE RANGE DIAGNOSTICS PASSED!');
 }).catch(err => {
   console.error('\n❌ INTEGRATION TEST FAILURE:', err);
   process.exit(1);
