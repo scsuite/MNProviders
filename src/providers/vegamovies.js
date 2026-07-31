@@ -179,7 +179,15 @@ async function getStreams(tmdbId, mediaType, season, episode, options = {}) {
       ? movieReleaseLinks(detail, base)
       : episodeReleaseLinks(detail, base, Number(season), Number(episode));
     const maxReleases = Math.max(1, Number(options.maxReleases) || 10);
-    const selected = releases.slice(0, maxReleases);
+    const selected = options.onePerQuality
+      ? releases.filter((release, index, all) => {
+          const quality = qualityFrom(release.label);
+          return quality !== 'Unknown' && all.findIndex(item => qualityFrom(item.label) === quality) === index;
+        }).sort((a, b) => {
+          const rank = { '4K': 2160, '1080p': 1080, '720p': 720, '480p': 480, '360p': 360 };
+          return (rank[qualityFrom(b.label)] || 0) - (rank[qualityFrom(a.label)] || 0);
+        }).slice(0, maxReleases)
+      : releases.slice(0, maxReleases);
     const resolved = await Promise.all(selected.map(async release => {
       try {
         const directLinks = await resolveRelease(release.url, base, mediaType === 'tv' ? Number(episode) : null, release.label);

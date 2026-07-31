@@ -2,6 +2,8 @@ import cheerio from 'cheerio-without-node-native';
 import { HEADERS, MAIN_URL, TMDB_API_KEY } from './constants.js';
 import { expandMovieButton, extractHost, sortAndUnique } from './extractor.js';
 
+const DOMAINS_URL = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
+
 function normalizeType(value) {
   return /^(tv|series|show)$/i.test(String(value || '')) ? 'tv' : 'movie';
 }
@@ -21,20 +23,33 @@ function coversSeason(document, season) {
   return new RegExp(`(?:season[ ._/-]*|\\bs)0?${season}(?:\\D|$)`, 'i').test(text);
 }
 
-async function search(metadata, season) {
+async function getMainUrls() {
+  const candidates = [];
+  try {
+    const response = await fetch(DOMAINS_URL, { headers: HEADERS });
+    if (response.ok) {
+      const configured = String((await response.json()).moviesdrive || '').replace(/\/$/, '');
+      if (/^https?:\/\//i.test(configured)) candidates.push(configured);
+    }
+  } catch (_) {}
+  candidates.push(MAIN_URL);
+  return [...new Set(candidates)];
+}
+
+async function search(metadata, season, mainUrls) {
   const queries = [metadata.imdbId, metadata.title].filter(Boolean);
-  for (const query of queries) {
-    try {
-      const data = await fetch(`${MAIN_URL}/search.php?q=${encodeURIComponent(query)}&page=1`, { headers: HEADERS }).then(r => r.json());
-      const documents = (data.hits || []).map(hit => hit.document).filter(Boolean);
-      const exact = metadata.imdbId ? documents.filter(doc => doc.imdb_id === metadata.imdbId) : [];
-      const titled = documents.filter(doc => String(doc.post_title || '').toLowerCase().includes(String(metadata.title || '').toLowerCase()));
-      const candidates = exact.length ? exact : titled;
-      const match = candidates.find(doc => coversSeason(doc, season));
-      if (match) return `${MAIN_URL}${String(match.permalink).startsWith('/') ? '' : '/'}${match.permalink}`;
-    } catch (_) {}
-  }
-  return null;
+  const attempts = mainUrls.flatMap(mainUrl => queries.map(async query => {
+        const data = await fetch(`${mainUrl}/search.php?q=${encodeURIComponent(query)}&page=1`, { headers: { ...HEADERS, Referer: `${mainUrl}/` } }).then(r => r.json());
+        const documents = (data.hits || []).map(hit => hit.document).filter(Boolean);
+        const exact = metadata.imdbId ? documents.filter(doc => doc.imdb_id === metadata.imdbId) : [];
+        const titled = documents.filter(doc => String(doc.post_title || '').toLowerCase().includes(String(metadata.title || '').toLowerCase()));
+        const candidates = exact.length ? exact : titled;
+        const match = candidates.find(doc => coversSeason(doc, season));
+        if (match) return `${mainUrl}${String(match.permalink).startsWith('/') ? '' : '/'}${match.permalink}`;
+        throw new Error('No matching result');
+  }));
+  try { return await Promise.any(attempts); }
+  catch (_) { return null; }
 }
 
 function seasonPages($, season) {
@@ -99,9 +114,12 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
     const type = normalizeType(mediaType);
     const seasonNumber = Number(season) || 1;
     const episodeNumber = Number(episode) || 1;
-    const metadata = await getMetadata(String(tmdbId).replace(/^tmdb:/i, ''), type);
+    const [metadata, mainUrls] = await Promise.all([
+      getMetadata(String(tmdbId).replace(/^tmdb:/i, ''), type),
+      getMainUrls()
+    ]);
     if (!metadata?.title) return [];
-    const mediaUrl = await search(metadata, type === 'tv' ? seasonNumber : null);
+    const mediaUrl = await search(metadata, type === 'tv' ? seasonNumber : null, mainUrls);
     if (!mediaUrl) return [];
     const html = await fetch(mediaUrl, { headers: HEADERS }).then(r => r.text());
     const $ = cheerio.load(html);

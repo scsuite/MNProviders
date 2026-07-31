@@ -2,7 +2,7 @@ import moviesDriveModule from '../../src/moviesdrive/index.js';
 import vegaMoviesModule from '../../src/providers/vegamovies.js';
 import castleModule from '../../src/providers/castle.js';
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 const DEFAULT_TIMEOUT_MS = 12000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
@@ -10,7 +10,7 @@ const PROVIDERS = {
   moviesdrive: moviesDriveModule.getStreams,
   // Keep the combined request below Cloudflare Free's subrequest ceiling.
   vegamovies: (tmdbId, type, season, episode) =>
-    vegaMoviesModule.getStreams(tmdbId, type, season, episode, { maxReleases: 4 }),
+    vegaMoviesModule.getStreams(tmdbId, type, season, episode, { maxReleases: 4, onePerQuality: true }),
   castle: castleModule.getStreams
 };
 
@@ -140,24 +140,30 @@ async function probe(url, referer) {
 }
 
 async function diagnostics() {
-  const moviesDriveUrl = 'https://new1.moviesdrive.christmas/search.php?q=tt9288030&page=1';
   const domainsUrl = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
-  const [tmdb, moviesdrive, domains] = await Promise.all([
+  const [tmdb, domains] = await Promise.all([
     probe('https://api.themoviedb.org/3/tv/108978?api_key=439c478a771f35c05022f9feabcca01c'),
-    probe(moviesDriveUrl, 'https://new1.moviesdrive.christmas/'),
     probe(domainsUrl)
   ]);
+  let moviesdrive = { ok: false, error: 'MoviesDrive domain unavailable' };
   let vegamovies = { ok: false, error: 'Vega domain unavailable' };
+  let vegaDetail = { ok: false, error: 'Vega detail unavailable' };
   if (domains.ok) {
     try {
       const response = await fetch(domainsUrl);
-      const domain = String((await response.json()).vegamovies || '').replace(/\/$/, '');
-      if (domain) vegamovies = await probe(`${domain}/search.php?q=tt9288030`, domain);
+      const configured = await response.json();
+      const moviesDomain = String(configured.moviesdrive || '').replace(/\/$/, '');
+      const vegaDomain = String(configured.vegamovies || '').replace(/\/$/, '');
+      if (moviesDomain) moviesdrive = await probe(`${moviesDomain}/search.php?q=tt9288030&page=1`, moviesDomain);
+      if (vegaDomain) {
+        vegamovies = await probe(`${vegaDomain}/search.php?q=tt9288030`, vegaDomain);
+        vegaDetail = await probe(`${vegaDomain}/download-reacher-season-1-3-amazon-original-complete-org-5-1-hindi-480p-720p-1080p-web-dl/`, vegaDomain);
+      }
     } catch (error) {
       vegamovies = { ok: false, error: error?.message || String(error) };
     }
   }
-  return { tmdb, moviesdrive, domains, vegamovies };
+  return { tmdb, moviesdrive, domains, vegamovies, vegaDetail };
 }
 
 function parseRequest(url, env) {
