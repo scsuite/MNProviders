@@ -4,18 +4,13 @@ const mdModule = require('../moviesdrive/index');
 const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 
 const WORKER_BASE = 'https://lucky-star-3059.salman-sohail93.workers.dev';
-const WORKER_TIMEOUT_MS = 20000;
 
 async function fetchWorkerData(tmdbId, mediaType, season, episode) {
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), WORKER_TIMEOUT_MS) : null;
   try {
     const url = `${WORKER_BASE}/streams?tmdbId=${encodeURIComponent(tmdbId)}&type=${encodeURIComponent(mediaType)}&season=${encodeURIComponent(season || 1)}&episode=${encodeURIComponent(episode || 1)}`;
     const response = await fetch(url, {
-      signal: controller ? controller.signal : undefined,
       headers: { Accept: 'application/json' }
     });
-    if (timer) clearTimeout(timer);
     if (!response.ok) return null;
     const data = await response.json();
     if (!data || !Array.isArray(data.directStreams) || !Array.isArray(data.candidates)) {
@@ -23,7 +18,6 @@ async function fetchWorkerData(tmdbId, mediaType, season, episode) {
     }
     return data;
   } catch (_) {
-    if (timer) clearTimeout(timer);
     return null;
   }
 }

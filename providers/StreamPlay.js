@@ -1909,19 +1909,13 @@ var vegaModule = require_vegamovies();
 var mdModule = (init_moviesdrive(), __toCommonJS(moviesdrive_exports));
 var { mapConcurrent: mapConcurrent2, uniqueExactStreams: uniqueExactStreams2 } = require_streams();
 var WORKER_BASE = "https://lucky-star-3059.salman-sohail93.workers.dev";
-var WORKER_TIMEOUT_MS = 2e4;
 function fetchWorkerData(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
-    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), WORKER_TIMEOUT_MS) : null;
     try {
       const url = `${WORKER_BASE}/streams?tmdbId=${encodeURIComponent(tmdbId)}&type=${encodeURIComponent(mediaType)}&season=${encodeURIComponent(season || 1)}&episode=${encodeURIComponent(episode || 1)}`;
       const response = yield fetch(url, {
-        signal: controller ? controller.signal : void 0,
         headers: { Accept: "application/json" }
       });
-      if (timer)
-        clearTimeout(timer);
       if (!response.ok)
         return null;
       const data = yield response.json();
@@ -1930,8 +1924,6 @@ function fetchWorkerData(tmdbId, mediaType, season, episode) {
       }
       return data;
     } catch (_) {
-      if (timer)
-        clearTimeout(timer);
       return null;
     }
   });
