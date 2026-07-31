@@ -2816,7 +2816,7 @@ function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
 }
 function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c;
     if (!tmdbId || mediaType !== "movie" && mediaType !== "tv")
       return [];
     if (mediaType === "tv" && (!season || !episode))
@@ -2828,34 +2828,32 @@ function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
         provider: s.provider || "castle",
         source: s.source || s.name || "Castle"
       }));
-      const resolvedCandidates = yield mapConcurrent2(workerData.candidates || [], 4, resolveDeviceCandidate);
-      rawStreams = [...directStreams, ...resolvedCandidates.flat().filter(Boolean)];
+      const resolutionJob = mapConcurrent2(workerData.candidates || [], 16, resolveDeviceCandidate);
+      const providerFallbackJobs = [];
       const workerReported4KHDHub = workerData.providers && Object.prototype.hasOwnProperty.call(workerData.providers, "4khdhub");
       const worker4KCount = Number(((_b = (_a = workerData.providers) == null ? void 0 : _a["4khdhub"]) == null ? void 0 : _b.count) || 0);
       if (workerReported4KHDHub && worker4KCount === 0) {
         const discover4KHDHub = fourkHDHubModule.discoverCandidates || ((_c = fourkHDHubModule.default) == null ? void 0 : _c.discoverCandidates);
         if (typeof discover4KHDHub === "function") {
           try {
-            const localCandidates = yield discover4KHDHub(tmdbId, mediaType, season, episode);
-            const localResolved = yield mapConcurrent2(localCandidates, 4, resolveDeviceCandidate);
-            rawStreams.push(...localResolved.flat().filter(Boolean));
+            providerFallbackJobs.push((() => __async(this, null, function* () {
+              const localCandidates = yield discover4KHDHub(tmdbId, mediaType, season, episode);
+              const localResolved = yield mapConcurrent2(localCandidates, 4, resolveDeviceCandidate);
+              return localResolved.flat().filter(Boolean);
+            }))().catch(() => []));
           } catch (_) {
           }
         }
       }
-      const workerReportedMultiMovies = workerData.providers && Object.prototype.hasOwnProperty.call(workerData.providers, "multimovies");
-      const workerMultiMoviesCount = Number(((_e = (_d = workerData.providers) == null ? void 0 : _d.multimovies) == null ? void 0 : _e.count) || 0);
-      if (workerReportedMultiMovies && workerMultiMoviesCount === 0) {
-        const discoverMultiMovies = multiMoviesModule.discoverCandidates || ((_f = multiMoviesModule.default) == null ? void 0 : _f.discoverCandidates);
-        if (typeof discoverMultiMovies === "function") {
-          try {
-            const localCandidates = yield discoverMultiMovies(tmdbId, mediaType, season, episode);
-            const localResolved = yield mapConcurrent2(localCandidates, 4, resolveDeviceCandidate);
-            rawStreams.push(...localResolved.flat().filter(Boolean));
-          } catch (_) {
-          }
-        }
-      }
+      const [resolvedCandidates, fallbackGroups] = yield Promise.all([
+        resolutionJob,
+        Promise.all(providerFallbackJobs)
+      ]);
+      rawStreams = [
+        ...directStreams,
+        ...resolvedCandidates.flat().filter(Boolean),
+        ...fallbackGroups.flat().filter(Boolean)
+      ];
     } else {
       rawStreams = yield runLocalDiscoveryFallback(tmdbId, mediaType, season, episode);
     }
