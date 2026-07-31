@@ -90,6 +90,7 @@ var require_domains = __commonJS({
       VEGAMOVIES_FALLBACK: "https://vegamovies.catering",
       MOVIES4U_FALLBACK: "https://new2.movies4u.clinic",
       FOURKHDHUB_FALLBACK: "https://4khdhub.one",
+      MULTIMOVIES_FALLBACK: "https://multimovies.makeup",
       CASTLE_API: "https://api.hlowb.com",
       NEXDRIVE: "https://nexdrive.fit",
       HUBCLOUD: "https://hubcloud.cx",

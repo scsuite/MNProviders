@@ -93,6 +93,7 @@ var require_domains = __commonJS({
       VEGAMOVIES_FALLBACK: "https://vegamovies.catering",
       MOVIES4U_FALLBACK: "https://new2.movies4u.clinic",
       FOURKHDHUB_FALLBACK: "https://4khdhub.one",
+      MULTIMOVIES_FALLBACK: "https://multimovies.makeup",
       CASTLE_API: "https://api.hlowb.com",
       NEXDRIVE: "https://nexdrive.fit",
       HUBCLOUD: "https://hubcloud.cx",
@@ -2445,11 +2446,216 @@ var require_fourkHDhub = __commonJS({
   }
 });
 
+// src/providers/multimovies.js
+var require_multimovies = __commonJS({
+  "src/providers/multimovies.js"(exports2, module2) {
+    var cheerio3 = require("cheerio-without-node-native");
+    var CryptoJS = require("crypto-js");
+    var DOMAINS5 = require_domains();
+    var { mapConcurrent: mapConcurrent3, parseMediaAttributes, uniqueExactStreams: uniqueExactStreams3 } = require_streams();
+    var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36";
+    var HEADERS2 = { "User-Agent": USER_AGENT, Accept: "text/html,*/*;q=0.8" };
+    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+    var API_KEY = CryptoJS.enc.Utf8.parse("kiemtienmua911ca");
+    var API_IV = CryptoJS.enc.Utf8.parse("1234567890oiuytr");
+    function text(_0) {
+      return __async(this, arguments, function* (url, options = {}) {
+        const response = yield fetch(url, __spreadProps(__spreadValues({ redirect: "follow" }, options), { headers: __spreadValues(__spreadValues({}, HEADERS2), options.headers || {}) }));
+        if (!response.ok)
+          throw new Error(`HTTP ${response.status} for ${url}`);
+        return response.text();
+      });
+    }
+    function getBaseUrl() {
+      return __async(this, null, function* () {
+        try {
+          const domains = JSON.parse(yield text(DOMAINS5.PHISHER_DOMAINS));
+          if (domains.MultiMovies)
+            return String(domains.MultiMovies).replace(/\/$/, "");
+        } catch (_) {
+        }
+        return DOMAINS5.MULTIMOVIES_FALLBACK;
+      });
+    }
+    function metadata(tmdbId, mediaType) {
+      return __async(this, null, function* () {
+        const type = mediaType === "tv" ? "tv" : "movie";
+        const data = JSON.parse(yield text(`${DOMAINS5.TMDB_API}/${type}/${tmdbId}?api_key=${TMDB_KEY}`));
+        return { title: type === "tv" ? data.name : data.title, year: Number(String(type === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null };
+      });
+    }
+    var clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    var normalized = (value) => clean(value).toLowerCase().replace(/\(\d{4}\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+    var absolute = (url, base) => {
+      try {
+        return new URL(url, base).toString();
+      } catch (_) {
+        return "";
+      }
+    };
+    function selectResult(results, info, mediaType) {
+      const target = normalized(info.title);
+      return results.find((item) => {
+        const name = normalized(item.title);
+        const correctType = mediaType === "tv" ? /\/tvshows\//i.test(item.url) : /\/movies\//i.test(item.url);
+        return correctType && (name === target || name.startsWith(`${target} `)) && (!info.year || item.text.includes(String(info.year)) || name === target);
+      }) || results.find((item) => normalized(item.title) === target) || null;
+    }
+    function playerEmbeds(pageUrl) {
+      return __async(this, null, function* () {
+        const html = yield text(pageUrl, { headers: { Referer: new URL(pageUrl).origin } });
+        const $ = cheerio3.load(html);
+        const options = $("#playeroptionsul li").toArray().map((item) => ({
+          post: $(item).attr("data-post"),
+          nume: $(item).attr("data-nume"),
+          type: $(item).attr("data-type"),
+          label: clean($(item).text())
+        })).filter((item) => item.post && item.nume && !/trailer/i.test(`${item.nume} ${item.label}`));
+        return mapConcurrent3(options, 4, (item) => __async(this, null, function* () {
+          try {
+            const origin = new URL(pageUrl).origin;
+            const response = yield fetch(`${origin}/wp-admin/admin-ajax.php`, {
+              method: "POST",
+              headers: __spreadProps(__spreadValues({}, HEADERS2), { Referer: pageUrl, "Content-Type": "application/x-www-form-urlencoded", "X-Requested-With": "XMLHttpRequest" }),
+              body: new URLSearchParams({ action: "doo_player_ajax", post: item.post, nume: item.nume, type: item.type || "" }).toString()
+            });
+            const data = yield response.json();
+            const $embed = cheerio3.load((data == null ? void 0 : data.embed_url) || "");
+            return { url: absolute($embed("iframe").attr("src") || (data == null ? void 0 : data.embed_url), pageUrl), label: item.label };
+          } catch (_) {
+            return null;
+          }
+        })).then((items) => items.filter((item) => (item == null ? void 0 : item.url) && !/youtube/i.test(item.url)));
+      });
+    }
+    function mirrorCandidates(embed, pageUrl) {
+      return __async(this, null, function* () {
+        try {
+          const response = yield fetch(embed.url, { redirect: "follow", headers: __spreadProps(__spreadValues({}, HEADERS2), { Referer: pageUrl }) });
+          const finalUrl = response.url || embed.url;
+          const slug = new URL(embed.url).pathname.split("/").filter(Boolean).pop();
+          if (!slug)
+            return [];
+          const helper = yield fetch(`${new URL(finalUrl).origin}/embedhelper2.php`, {
+            method: "POST",
+            headers: __spreadProps(__spreadValues({}, HEADERS2), { Referer: finalUrl, "Content-Type": "application/x-www-form-urlencoded" }),
+            body: new URLSearchParams({ sid: slug, UserFavSite: "", currentDomain: new URL(pageUrl).hostname }).toString()
+          });
+          const data = yield helper.json();
+          const ids = JSON.parse(atob(data.mresult || ""));
+          return Object.entries(data.sources || {}).flatMap(([key, source]) => {
+            const id = ids[key];
+            if (!id || !source.siteUrl)
+              return [];
+            const origin = new URL(source.siteUrl).origin;
+            if (!/rpmhub\.site|p2pplay\.pro|uns\.bio/i.test(origin))
+              return [];
+            return [{
+              provider: "MultiMovies",
+              source: `MultiMovies ${source.friendlyName || key}`,
+              quality: "Unknown",
+              url: `${origin}/#${id}`,
+              referer: finalUrl,
+              pageUrl,
+              headers: __spreadProps(__spreadValues({}, HEADERS2), { Referer: `${origin}/#${id}` }),
+              resolverType: "multimovies_api"
+            }];
+          });
+        } catch (_) {
+          return [];
+        }
+      });
+    }
+    function discoverCandidates2(tmdbId, mediaType, season = 1, episode = 1) {
+      return __async(this, null, function* () {
+        if (!tmdbId || !["movie", "tv"].includes(mediaType))
+          return [];
+        try {
+          const [base, info] = yield Promise.all([getBaseUrl(), metadata(tmdbId, mediaType)]);
+          const searchHtml = yield text(`${base}/?s=${encodeURIComponent(info.title)}`, { headers: { Referer: base } });
+          const $ = cheerio3.load(searchHtml);
+          const results = $("div.result-item, article").toArray().map((item) => ({
+            title: clean($(item).find(".title,h2,h3").first().text()),
+            text: clean($(item).text()),
+            url: absolute($(item).find("a").first().attr("href"), base)
+          })).filter((item) => item.title && item.url);
+          const selected = selectResult(results, info, mediaType);
+          if (!selected)
+            return [];
+          let pageUrl = selected.url;
+          if (mediaType === "tv") {
+            const detail = cheerio3.load(yield text(pageUrl, { headers: { Referer: base } }));
+            const target = detail("#seasons ul.episodios li").toArray().find((item) => {
+              const href = detail(item).find("a").attr("href") || "";
+              const marker = href.match(/-(\d+)x(\d+)\/?$/i);
+              return marker && Number(marker[1]) === Number(season) && Number(marker[2]) === Number(episode);
+            });
+            pageUrl = absolute(target && detail(target).find("a").attr("href"), selected.url);
+            if (!pageUrl)
+              return [];
+          }
+          const embeds = yield playerEmbeds(pageUrl);
+          const groups = yield mapConcurrent3(embeds, 3, (embed) => mirrorCandidates(embed, pageUrl));
+          const seen = /* @__PURE__ */ new Set();
+          return groups.flat().filter((item) => !seen.has(item.url) && seen.add(item.url));
+        } catch (error) {
+          console.log(`[MultiMovies Candidates] ${(error == null ? void 0 : error.message) || error}`);
+          return [];
+        }
+      });
+    }
+    function decryptApi(hex) {
+      const bytes = CryptoJS.AES.decrypt({ ciphertext: CryptoJS.enc.Hex.parse(String(hex).trim()) }, API_KEY, { iv: API_IV, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });
+      return JSON.parse(bytes.toString(CryptoJS.enc.Utf8).replace(/[\u0000-\u001f]+$/g, ""));
+    }
+    function resolveCandidate2(candidate) {
+      return __async(this, null, function* () {
+        if (!(candidate == null ? void 0 : candidate.url) || candidate.resolverType !== "multimovies_api")
+          return [];
+        try {
+          const parsed = new URL(candidate.url);
+          const id = parsed.hash.slice(1).split("&")[0];
+          if (!id)
+            return [];
+          const apiUrl = `${parsed.origin}/api/v1/video?id=${encodeURIComponent(id)}&w=1920&h=1080&r=${encodeURIComponent(new URL(candidate.pageUrl).hostname)}`;
+          const payload = decryptApi(yield text(apiUrl, { headers: { Referer: candidate.url } }));
+          const mediaUrl = payload.cfNative || payload.source;
+          if (!/^https?:\/\//i.test(mediaUrl || ""))
+            return [];
+          const attributes = parseMediaAttributes(payload.title, mediaUrl);
+          const subtitles = Object.entries(payload.subtitle || {}).map(([language, url]) => ({ language, url: absolute(String(url).split("#")[0], parsed.origin) })).filter((item) => item.url);
+          return [{
+            provider: "MultiMovies",
+            source: candidate.source,
+            name: `MultiMovies \u2022 ${attributes.quality} \u2022 ${candidate.source.replace(/^MultiMovies\s*/i, "")}`,
+            url: mediaUrl,
+            quality: attributes.quality,
+            headers: __spreadProps(__spreadValues({}, HEADERS2), { Referer: parsed.origin }),
+            subtitles,
+            seekable: true
+          }];
+        } catch (_) {
+          return [];
+        }
+      });
+    }
+    function getStreams3(tmdbId, mediaType, season = 1, episode = 1) {
+      return __async(this, null, function* () {
+        const candidates = yield discoverCandidates2(tmdbId, mediaType, season, episode);
+        const streams = yield mapConcurrent3(candidates, 4, resolveCandidate2);
+        return uniqueExactStreams3(streams.flat().filter(Boolean));
+      });
+    }
+    module2.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreams: getStreams3 };
+  }
+});
+
 // src/providers/streamplay.js
 var { getStreams: getCastleStreams } = require_castle();
 var vegaModule = require_vegamovies();
 var movies4uModule = require_movies4u();
 var fourkHDHubModule = require_fourkHDhub();
+var multiMoviesModule = require_multimovies();
 var mdModule = (init_moviesdrive(), __toCommonJS(moviesdrive_exports));
 var { mapConcurrent: mapConcurrent2, uniqueExactStreams: uniqueExactStreams2 } = require_streams();
 var DOMAINS4 = require_domains();
@@ -2475,13 +2681,14 @@ function fetchWorkerData(tmdbId, mediaType, season, episode) {
 }
 function resolveDeviceCandidate(candidate) {
   return __async(this, null, function* () {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     if (!candidate || !candidate.url)
       return [];
     const mdResolver = mdModule.resolveCandidate || ((_a = mdModule.default) == null ? void 0 : _a.resolveCandidate);
     const vegaResolver = vegaModule.resolveCandidate || ((_b = vegaModule.default) == null ? void 0 : _b.resolveCandidate);
     const movies4uResolver = movies4uModule.resolveCandidate || ((_c = movies4uModule.default) == null ? void 0 : _c.resolveCandidate);
     const fourkHDHubResolver = fourkHDHubModule.resolveCandidate || ((_d = fourkHDHubModule.default) == null ? void 0 : _d.resolveCandidate);
+    const multiMoviesResolver = multiMoviesModule.resolveCandidate || ((_e = multiMoviesModule.default) == null ? void 0 : _e.resolveCandidate);
     try {
       if (candidate.provider === "Movies4u") {
         if (typeof movies4uResolver === "function") {
@@ -2493,6 +2700,13 @@ function resolveDeviceCandidate(candidate) {
       if (candidate.provider === "4KHDHub") {
         if (typeof fourkHDHubResolver === "function") {
           const res = yield fourkHDHubResolver(candidate);
+          return Array.isArray(res) ? res : [];
+        }
+        return [];
+      }
+      if (candidate.provider === "MultiMovies") {
+        if (typeof multiMoviesResolver === "function") {
+          const res = yield multiMoviesResolver(candidate);
           return Array.isArray(res) ? res : [];
         }
         return [];
@@ -2532,21 +2746,24 @@ function resolveDeviceCandidate(candidate) {
 }
 function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
     const discoverVega = vegaModule.discoverCandidates || ((_a = vegaModule.default) == null ? void 0 : _a.discoverCandidates);
     const getVega = vegaModule.getStreams || ((_b = vegaModule.default) == null ? void 0 : _b.getStreams);
     const discoverMovies4u = movies4uModule.discoverCandidates || ((_c = movies4uModule.default) == null ? void 0 : _c.discoverCandidates);
     const getMovies4u = movies4uModule.getStreams || ((_d = movies4uModule.default) == null ? void 0 : _d.getStreams);
     const discover4KHDHub = fourkHDHubModule.discoverCandidates || ((_e = fourkHDHubModule.default) == null ? void 0 : _e.discoverCandidates);
     const get4KHDHub = fourkHDHubModule.getStreams || ((_f = fourkHDHubModule.default) == null ? void 0 : _f.getStreams);
-    const discoverMD = mdModule.discoverCandidates || ((_g = mdModule.default) == null ? void 0 : _g.discoverCandidates);
-    const getMD = mdModule.getStreams || ((_h = mdModule.default) == null ? void 0 : _h.getStreams);
-    const [castleResult, vegaResult, mdResult, movies4uResult, fourkHDHubResult] = yield Promise.allSettled([
+    const discoverMultiMovies = multiMoviesModule.discoverCandidates || ((_g = multiMoviesModule.default) == null ? void 0 : _g.discoverCandidates);
+    const getMultiMovies = multiMoviesModule.getStreams || ((_h = multiMoviesModule.default) == null ? void 0 : _h.getStreams);
+    const discoverMD = mdModule.discoverCandidates || ((_i = mdModule.default) == null ? void 0 : _i.discoverCandidates);
+    const getMD = mdModule.getStreams || ((_j = mdModule.default) == null ? void 0 : _j.getStreams);
+    const [castleResult, vegaResult, mdResult, movies4uResult, fourkHDHubResult, multiMoviesResult] = yield Promise.allSettled([
       typeof getCastleStreams === "function" ? getCastleStreams(tmdbId, mediaType, season, episode) : Promise.resolve([]),
       typeof discoverVega === "function" ? discoverVega(tmdbId, mediaType, season, episode) : typeof getVega === "function" ? getVega(tmdbId, mediaType, season, episode) : Promise.resolve([]),
       typeof discoverMD === "function" ? discoverMD(tmdbId, mediaType, season, episode) : typeof getMD === "function" ? getMD(tmdbId, mediaType, season, episode) : Promise.resolve([]),
       typeof discoverMovies4u === "function" ? discoverMovies4u(tmdbId, mediaType, season, episode) : typeof getMovies4u === "function" ? getMovies4u(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-      typeof discover4KHDHub === "function" ? discover4KHDHub(tmdbId, mediaType, season, episode) : typeof get4KHDHub === "function" ? get4KHDHub(tmdbId, mediaType, season, episode) : Promise.resolve([])
+      typeof discover4KHDHub === "function" ? discover4KHDHub(tmdbId, mediaType, season, episode) : typeof get4KHDHub === "function" ? get4KHDHub(tmdbId, mediaType, season, episode) : Promise.resolve([]),
+      typeof discoverMultiMovies === "function" ? discoverMultiMovies(tmdbId, mediaType, season, episode) : typeof getMultiMovies === "function" ? getMultiMovies(tmdbId, mediaType, season, episode) : Promise.resolve([])
     ]);
     const castleStreams = castleResult.status === "fulfilled" && Array.isArray(castleResult.value) ? castleResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "castle", source: s.source || s.name || "Castle" })) : [];
     let vegaStreams = [];
@@ -2585,12 +2802,21 @@ function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
         fourkHDHubStreams = fourkHDHubResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "4KHDHub" }));
       }
     }
-    return [...castleStreams, ...vegaStreams, ...mdStreams, ...movies4uStreams, ...fourkHDHubStreams];
+    let multiMoviesStreams = [];
+    if (multiMoviesResult.status === "fulfilled" && Array.isArray(multiMoviesResult.value)) {
+      if (typeof discoverMultiMovies === "function") {
+        const resolved = yield mapConcurrent2(multiMoviesResult.value, 4, resolveDeviceCandidate);
+        multiMoviesStreams = resolved.flat().filter(Boolean);
+      } else {
+        multiMoviesStreams = multiMoviesResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "MultiMovies" }));
+      }
+    }
+    return [...castleStreams, ...vegaStreams, ...mdStreams, ...movies4uStreams, ...fourkHDHubStreams, ...multiMoviesStreams];
   });
 }
 function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e, _f;
     if (!tmdbId || mediaType !== "movie" && mediaType !== "tv")
       return [];
     if (mediaType === "tv" && (!season || !episode))
@@ -2611,6 +2837,19 @@ function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
         if (typeof discover4KHDHub === "function") {
           try {
             const localCandidates = yield discover4KHDHub(tmdbId, mediaType, season, episode);
+            const localResolved = yield mapConcurrent2(localCandidates, 4, resolveDeviceCandidate);
+            rawStreams.push(...localResolved.flat().filter(Boolean));
+          } catch (_) {
+          }
+        }
+      }
+      const workerReportedMultiMovies = workerData.providers && Object.prototype.hasOwnProperty.call(workerData.providers, "multimovies");
+      const workerMultiMoviesCount = Number(((_e = (_d = workerData.providers) == null ? void 0 : _d.multimovies) == null ? void 0 : _e.count) || 0);
+      if (workerReportedMultiMovies && workerMultiMoviesCount === 0) {
+        const discoverMultiMovies = multiMoviesModule.discoverCandidates || ((_f = multiMoviesModule.default) == null ? void 0 : _f.discoverCandidates);
+        if (typeof discoverMultiMovies === "function") {
+          try {
+            const localCandidates = yield discoverMultiMovies(tmdbId, mediaType, season, episode);
             const localResolved = yield mapConcurrent2(localCandidates, 4, resolveDeviceCandidate);
             rawStreams.push(...localResolved.flat().filter(Boolean));
           } catch (_) {
