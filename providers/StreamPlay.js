@@ -1006,7 +1006,7 @@ var require_streams = __commonJS({
       const url = String((stream == null ? void 0 : stream.url) || "").toLowerCase();
       const source = String((stream == null ? void 0 : stream.source) || (stream == null ? void 0 : stream.name) || "").toLowerCase();
       if (/hubcloud\s*fsl|\bfsl\b/i.test(source) || /cloudflarestorage\.com\/hub\//i.test(url)) {
-        return true;
+        return false;
       }
       if (/\.m3u8(?:$|[?#])/i.test(url) || /castle/i.test(source) && /hls|m3u8/i.test(`${source} ${url}`)) {
         return true;
@@ -1572,14 +1572,7 @@ function extractHubCloud(url, referer) {
         var _a2, _b, _c, _d, _e, _f, _g, _h;
         let link = button.link;
         if (/pixeldra|pixelserver|pixel server/i.test(button.text)) {
-          try {
-            const parsed = new URL(link);
-            const id = parsed.pathname.split("/").filter(Boolean).pop();
-            if (!/download/i.test(link) && id)
-              link = `${parsed.origin}/api/file/${id}?download`;
-          } catch (_) {
-            return null;
-          }
+          return null;
         } else if (/gpdl\.|download\s*\[server\s*:\s*10gbps/i.test(`${button.link} ${button.text}`)) {
           try {
             const gateway = yield fetch(link, { redirect: "manual", headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: pageUrl }) });
@@ -1734,8 +1727,7 @@ function extractGdflix(_0, _1) {
           } else if (/gofile/i.test(button.text)) {
             results.push(...yield extractGofile(button.link, quality, size, page.pageUrl));
           } else if (/pixeldra|pixelserver|\bpixel\b/i.test(button.text)) {
-            const pixelUrl = /\/download(?:[/?#]|$)/i.test(button.link) ? button.link : `${new URL(button.link).origin}/api/file/${button.link.split("/").filter(Boolean).pop()}?download`;
-            results.push(makeStream("GDFlix Pixeldrain", pixelUrl, quality, size, page.pageUrl));
+            continue;
           }
         }
         const cfBase = page.pageUrl.replace("/file/", "/wfile/").replace(/\?.*$/, "");

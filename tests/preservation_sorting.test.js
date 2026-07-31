@@ -111,9 +111,9 @@ async function testLinkPreservationAndSorting() {
 
   const testList = [
     { provider: 'MoviesDrive', source: 'HubCloud Pixel 10Gbps', quality: '1080p', url: 'https://cdn.test/pixel1080.mkv' },
-    { provider: 'MoviesDrive', source: 'HubCloud FSL', quality: '720p', url: 'https://cdn.test/fsl720.mkv' },
+    { provider: 'castle', source: 'Castle HLS', quality: '720p', url: 'https://cdn.test/castle720.m3u8' },
     { provider: 'vegamovies', source: 'FastDL', quality: '1080p', url: 'https://cdn.test/fastdl1080.mp4' },
-    { provider: 'MoviesDrive', source: 'HubCloud FSL', quality: '1080p', url: 'https://cdn.test/fsl1080.mkv' }
+    { provider: 'castle', source: 'Castle HLS', quality: '1080p', url: 'https://cdn.test/castle1080.m3u8' }
   ];
 
   const sortedList = uniqueExactStreams(testList);
@@ -131,15 +131,15 @@ async function testLinkPreservationAndSorting() {
   const same1080pList = [
     { provider: 'MoviesDrive', source: 'HubCloud Pixel 10Gbps', quality: '1080p', url: 'https://cdn.test/pixel1080.mkv' }, // false
     { provider: 'vegamovies', source: 'FastDL', quality: '1080p', url: 'https://cdn.test/fastdl1080.mp4' }, // unknown
-    { provider: 'MoviesDrive', source: 'HubCloud FSL', quality: '1080p', url: 'https://cdn.test/fsl1080.mkv' } // true
+    { provider: 'castle', source: 'Castle HLS', quality: '1080p', url: 'https://cdn.test/castle1080.m3u8' } // true
   ];
 
   const sorted1080p = uniqueExactStreams(same1080pList);
   const sources1080p = sorted1080p.map(s => s.source);
-  assert.deepStrictEqual(sources1080p, ['HubCloud FSL', 'FastDL', 'HubCloud Pixel 10Gbps']);
+  assert.deepStrictEqual(sources1080p, ['Castle HLS', 'FastDL', 'HubCloud Pixel 10Gbps']);
   const invisiblePrefixLengths = sorted1080p.map(s => (s.name.match(/^\u200B+/) || [''])[0].length);
   assert.deepStrictEqual(invisiblePrefixLengths, [4, 5, 6], 'Nuvio name prefixes must preserve same-quality seekability order');
-  console.log('PASS: Within 1080p tier: seekable (FSL) > unknown (FastDL) > non-seekable (Pixel 10Gbps)');
+  console.log('PASS: Within 1080p tier: seekable (Castle HLS) > unknown (FastDL) > non-seekable (Pixel 10Gbps)');
 
   console.log('--- Test 9: Idempotent labeling & prefix protection ---');
   const pixelStream = { provider: 'MoviesDrive', source: 'HubCloud Pixel 10Gbps', quality: '1080p', url: 'https://cdn.test/pixel1080.mkv' };
@@ -155,6 +155,8 @@ async function testLinkPreservationAndSorting() {
   assert(!fastdlSorted[0].name.includes('(No Seek)'), 'Unknown seekability stream (FastDL) must NOT be labeled (No Seek)');
   const castleMp4 = uniqueExactStreams([{ provider: 'castle', source: 'Castle MP4', quality: '1080p', url: 'https://cdn.test/castle.mp4' }]);
   assert.strictEqual(castleMp4[0].seekable, 'unknown', 'Only Castle HLS, not every Castle stream, should be statically seekable');
+  const fslStream = uniqueExactStreams([{ provider: 'Movies4u', source: 'HubCloud FSL', quality: '1080p', url: 'https://cdn.test/fsl.mkv' }]);
+  assert.strictEqual(fslStream[0].seekable, false, 'FSL must reflect confirmed Nuvio internal-player no-seek behavior');
   console.log('PASS: Labeling is idempotent (single (No Seek) label for false, zero for unknown)');
 }
 

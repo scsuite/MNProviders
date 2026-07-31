@@ -109,14 +109,10 @@ export async function extractHubCloud(url, referer) {
     }).get().filter(Boolean);
     const streams = await Promise.all(buttons.map(async button => {
       let link = button.link;
-      // Phisher's original Pixel path converts /u/{id} share pages into the
-      // host's direct /api/file/{id}?download endpoint without pre-validating it.
       if (/pixeldra|pixelserver|pixel server/i.test(button.text)) {
-        try {
-          const parsed = new URL(link);
-          const id = parsed.pathname.split('/').filter(Boolean).pop();
-          if (!/download/i.test(link) && id) link = `${parsed.origin}/api/file/${id}?download`;
-        } catch (_) { return null; }
+        // Current HubCloud Pixeldrain routes resolve to expired/deleted files
+        // (HTTP 404). Do not expose a known dead card or add a runtime probe.
+        return null;
       } else if (/gpdl\.|download\s*\[server\s*:\s*10gbps/i.test(`${button.link} ${button.text}`)) {
         try {
           const gateway = await fetch(link, { redirect: 'manual', headers: { ...HEADERS, Referer: pageUrl } });
@@ -249,10 +245,9 @@ async function extractGdflix(url, referer, hint = {}) {
         } else if (/gofile/i.test(button.text)) {
           results.push(...await extractGofile(button.link, quality, size, page.pageUrl));
         } else if (/pixeldra|pixelserver|\bpixel\b/i.test(button.text)) {
-          const pixelUrl = /\/download(?:[/?#]|$)/i.test(button.link)
-            ? button.link
-            : `${new URL(button.link).origin}/api/file/${button.link.split('/').filter(Boolean).pop()}?download`;
-          results.push(makeStream('GDFlix Pixeldrain', pixelUrl, quality, size, page.pageUrl));
+          // GDFlix currently exposes expired Pixeldrain IDs as well. Skip the
+          // known-dead route without performing an extra request per stream.
+          continue;
         }
       }
 

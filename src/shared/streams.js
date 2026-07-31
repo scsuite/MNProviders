@@ -144,8 +144,10 @@ function getSeekableHint(stream) {
   const url = String(stream?.url || '').toLowerCase();
   const source = String(stream?.source || stream?.name || '').toLowerCase();
 
+  // FSL supports HTTP byte ranges in isolation, but Nuvio's internal player
+  // cannot seek these progressive MKV/octet-stream responses reliably.
   if (/hubcloud\s*fsl|\bfsl\b/i.test(source) || /cloudflarestorage\.com\/hub\//i.test(url)) {
-    return true;
+    return false;
   }
   if (/\.m3u8(?:$|[?#])/i.test(url) || (/castle/i.test(source) && /hls|m3u8/i.test(`${source} ${url}`))) {
     return true;
