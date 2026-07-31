@@ -2,7 +2,7 @@ import moviesDriveModule from '../../src/moviesdrive/index.js';
 import vegaMoviesModule from '../../src/providers/vegamovies.js';
 import castleModule from '../../src/providers/castle.js';
 
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 const DEFAULT_TIMEOUT_MS = 12000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
@@ -141,9 +141,12 @@ async function probe(url, referer) {
 
 async function diagnostics() {
   const domainsUrl = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
-  const [tmdb, domains] = await Promise.all([
+  const [tmdb, domains, moviesdriveFallback, vegaRelease, hubcloud] = await Promise.all([
     probe('https://api.themoviedb.org/3/tv/108978?api_key=439c478a771f35c05022f9feabcca01c'),
-    probe(domainsUrl)
+    probe(domainsUrl),
+    probe('https://new1.moviesdrive.christmas/search.php?q=Reacher&page=1', 'https://new1.moviesdrive.christmas/'),
+    probe('https://nexdrive.fit/genxfm784776338494/', 'https://vegamovies.catering/'),
+    probe('https://hubcloud.cx/drive/ctroctdoeoo8bk9', 'https://new1.moviesdrive.christmas/')
   ]);
   let moviesdrive = { ok: false, error: 'MoviesDrive domain unavailable' };
   let vegamovies = { ok: false, error: 'Vega domain unavailable' };
@@ -163,7 +166,7 @@ async function diagnostics() {
       vegamovies = { ok: false, error: error?.message || String(error) };
     }
   }
-  return { tmdb, moviesdrive, domains, vegamovies, vegaDetail };
+  return { tmdb, domains, moviesdrive, moviesdriveFallback, hubcloud, vegamovies, vegaDetail, vegaRelease };
 }
 
 function parseRequest(url, env) {
