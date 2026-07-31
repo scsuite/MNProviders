@@ -44,6 +44,17 @@ function hubCloudServer(text, link) {
   return 'HubCloud';
 }
 
+function wrapFslMkvUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (!(host === 'r2.cloudflarestorage.com' || host.endsWith('.r2.cloudflarestorage.com'))) return url;
+    return `${DOMAINS.WORKER}/media/file.mkv?url=${encodeURIComponent(url)}`;
+  } catch (_) {
+    return url;
+  }
+}
+
 export async function expandMovieButton(url, hint = {}) {
   try {
     const response = await fetch(url, { headers: HEADERS });
@@ -131,8 +142,10 @@ export async function extractHubCloud(url, referer) {
           if (!link) return null;
         } catch (_) { return null; }
       }
+      const source = hubCloudServer(button.text, button.link);
+      if (/HubCloud FSL/i.test(source)) link = wrapFslMkvUrl(link);
       return {
-        source: hubCloudServer(button.text, button.link),
+        source,
         title: [quality, size].filter(Boolean).join(' • '),
         url: safeUrl(link),
         quality,

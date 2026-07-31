@@ -1006,7 +1006,7 @@ var require_streams = __commonJS({
       const url = String((stream == null ? void 0 : stream.url) || "").toLowerCase();
       const source = String((stream == null ? void 0 : stream.source) || (stream == null ? void 0 : stream.name) || "").toLowerCase();
       if (/hubcloud\s*fsl|\bfsl\b/i.test(source) || /cloudflarestorage\.com\/hub\//i.test(url)) {
-        return false;
+        return true;
       }
       if (/\.m3u8(?:$|[?#])/i.test(url) || /castle/i.test(source) && /hls|m3u8/i.test(`${source} ${url}`)) {
         return true;
@@ -1495,6 +1495,17 @@ function hubCloudServer(text, link) {
     return "HubCloud Direct";
   return "HubCloud";
 }
+function wrapFslMkvUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (!(host === "r2.cloudflarestorage.com" || host.endsWith(".r2.cloudflarestorage.com")))
+      return url;
+    return `${import_domains2.default.WORKER}/media/file.mkv?url=${encodeURIComponent(url)}`;
+  } catch (_) {
+    return url;
+  }
+}
 function expandMovieButton(_0) {
   return __async(this, arguments, function* (url, hint = {}) {
     var _a, _b;
@@ -1599,8 +1610,11 @@ function extractHubCloud(url, referer) {
             return null;
           }
         }
+        const source = hubCloudServer(button.text, button.link);
+        if (/HubCloud FSL/i.test(source))
+          link = wrapFslMkvUrl(link);
         return {
-          source: hubCloudServer(button.text, button.link),
+          source,
           title: [quality, size].filter(Boolean).join(" \u2022 "),
           url: safeUrl(link),
           quality,

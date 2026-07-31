@@ -4,7 +4,7 @@ import movies4uModule from '../../src/providers/movies4u.js';
 import castleModule from '../../src/providers/castle.js';
 import domainConfig from '../../src/config/domains.js';
 
-const VERSION = '1.0.8';
+const VERSION = '1.0.9';
 const DEFAULT_TIMEOUT_MS = 12000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
@@ -28,6 +28,33 @@ function json(data, status = 200, extraHeaders = {}) {
 
 function normalizeType(value) {
   return /^(tv|series|show)$/i.test(String(value || '')) ? 'tv' : 'movie';
+}
+
+function isAllowedMediaRedirect(target) {
+  try {
+    const parsed = new URL(target);
+    const host = parsed.hostname.toLowerCase();
+    return parsed.protocol === 'https:' &&
+      (host === 'r2.cloudflarestorage.com' || host.endsWith('.r2.cloudflarestorage.com'));
+  } catch (_) {
+    return false;
+  }
+}
+
+function mediaRedirect(url) {
+  const target = url.searchParams.get('url') || '';
+  if (!isAllowedMediaRedirect(target)) {
+    return json({ ok: false, error: 'Unsupported media redirect target' }, 400, { 'Cache-Control': 'no-store' });
+  }
+  return new Response(null, {
+    status: 307,
+    headers: {
+      ...corsHeaders,
+      Location: target,
+      'Cache-Control': 'no-store, private',
+      'X-MNProviders-Media-Redirect': 'FSL-MKV'
+    }
+  });
 }
 
 function deadline(promise, milliseconds, provider) {
@@ -207,6 +234,7 @@ export async function handleRequest(request, env = {}, ctx = {}) {
   if (url.pathname === '/diagnostics') {
     return json({ ok: true, version: VERSION, probes: await diagnostics() }, 200, { 'Cache-Control': 'no-store' });
   }
+  if (url.pathname === '/media/file.mkv') return mediaRedirect(url);
   if (url.pathname !== '/streams') return json({ ok: false, error: 'Not found' }, 404);
 
   if (env.RESOLVER_KEY && request.headers.get('X-Resolver-Key') !== env.RESOLVER_KEY) {

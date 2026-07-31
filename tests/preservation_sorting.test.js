@@ -156,7 +156,7 @@ async function testLinkPreservationAndSorting() {
   const castleMp4 = uniqueExactStreams([{ provider: 'castle', source: 'Castle MP4', quality: '1080p', url: 'https://cdn.test/castle.mp4' }]);
   assert.strictEqual(castleMp4[0].seekable, 'unknown', 'Only Castle HLS, not every Castle stream, should be statically seekable');
   const fslStream = uniqueExactStreams([{ provider: 'Movies4u', source: 'HubCloud FSL', quality: '1080p', url: 'https://cdn.test/fsl.mkv' }]);
-  assert.strictEqual(fslStream[0].seekable, false, 'FSL must reflect confirmed Nuvio internal-player no-seek behavior');
+  assert.strictEqual(fslStream[0].seekable, true, 'Wrapped FSL must be ordered as a Range-capable MKV source');
   console.log('PASS: Labeling is idempotent (single (No Seek) label for false, zero for unknown)');
 }
 
