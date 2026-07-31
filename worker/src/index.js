@@ -2,9 +2,10 @@ import moviesDriveModule from '../../src/moviesdrive/index.js';
 import vegaMoviesModule from '../../src/providers/vegamovies.js';
 import castleModule from '../../src/providers/castle.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const DEFAULT_TIMEOUT_MS = 12000;
 const CACHE_SECONDS = 21600;
+const PARTIAL_CACHE_SECONDS = 300;
 const PROVIDERS = {
   moviesdrive: moviesDriveModule.getStreams,
   // Keep the combined request below Cloudflare Free's subrequest ceiling.
@@ -112,6 +113,53 @@ async function runProviders(params) {
   };
 }
 
+async function probe(url, referer) {
+  const started = Date.now();
+  try {
+    const response = await fetch(url, {
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/json;q=0.9,*/*;q=0.8',
+        ...(referer ? { Referer: referer } : {})
+      }
+    });
+    const body = await response.text();
+    return {
+      ok: response.ok,
+      status: response.status,
+      finalUrl: response.url,
+      contentType: response.headers.get('content-type'),
+      bytes: body.length,
+      elapsedMs: Date.now() - started,
+      preview: body.slice(0, 160).replace(/\s+/g, ' ')
+    };
+  } catch (error) {
+    return { ok: false, error: error?.message || String(error), elapsedMs: Date.now() - started };
+  }
+}
+
+async function diagnostics() {
+  const moviesDriveUrl = 'https://new1.moviesdrive.christmas/search.php?q=tt9288030&page=1';
+  const domainsUrl = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
+  const [tmdb, moviesdrive, domains] = await Promise.all([
+    probe('https://api.themoviedb.org/3/tv/108978?api_key=439c478a771f35c05022f9feabcca01c'),
+    probe(moviesDriveUrl, 'https://new1.moviesdrive.christmas/'),
+    probe(domainsUrl)
+  ]);
+  let vegamovies = { ok: false, error: 'Vega domain unavailable' };
+  if (domains.ok) {
+    try {
+      const response = await fetch(domainsUrl);
+      const domain = String((await response.json()).vegamovies || '').replace(/\/$/, '');
+      if (domain) vegamovies = await probe(`${domain}/search.php?q=tt9288030`, domain);
+    } catch (error) {
+      vegamovies = { ok: false, error: error?.message || String(error) };
+    }
+  }
+  return { tmdb, moviesdrive, domains, vegamovies };
+}
+
 function parseRequest(url, env) {
   const tmdbId = String(url.searchParams.get('tmdbId') || url.searchParams.get('id') || '').replace(/^tmdb:/i, '');
   const type = normalizeType(url.searchParams.get('type'));
@@ -154,8 +202,10 @@ async function cachedResponse(request, env, ctx, params) {
     streams: result.streams,
     providers: result.providers
   };
+  const complete = params.providers.every(provider => result.providers[provider]?.count > 0);
+  const cacheSeconds = complete ? CACHE_SECONDS : PARTIAL_CACHE_SECONDS;
   const response = json(payload, 200, {
-    'Cache-Control': `public, max-age=${CACHE_SECONDS}`,
+    'Cache-Control': `public, max-age=${cacheSeconds}`,
     'X-MNProviders-Cache': 'MISS'
   });
   if (cache && ctx?.waitUntil) ctx.waitUntil(cache.put(cacheKey, response.clone()));
@@ -169,6 +219,9 @@ export async function handleRequest(request, env = {}, ctx = {}) {
   const url = new URL(request.url);
   if (url.pathname === '/' || url.pathname === '/health') {
     return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: Object.keys(PROVIDERS) });
+  }
+  if (url.pathname === '/diagnostics') {
+    return json({ ok: true, version: VERSION, probes: await diagnostics() }, 200, { 'Cache-Control': 'no-store' });
   }
   if (url.pathname !== '/streams') return json({ ok: false, error: 'Not found' }, 404);
 
