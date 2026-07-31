@@ -88,6 +88,7 @@ var require_domains = __commonJS({
       WORKER: "https://lucky-star-3059.salman-sohail93.workers.dev",
       MOVIESDRIVE_FALLBACK: "https://new1.moviesdrive.christmas",
       VEGAMOVIES_FALLBACK: "https://vegamovies.catering",
+      MOVIES4U_FALLBACK: "https://new2.movies4u.clinic",
       CASTLE_API: "https://api.hlowb.com",
       NEXDRIVE: "https://nexdrive.fit",
       HUBCLOUD: "https://hubcloud.cx",

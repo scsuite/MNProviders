@@ -1,9 +1,10 @@
 import moviesDriveModule from '../../src/moviesdrive/index.js';
 import vegaMoviesModule from '../../src/providers/vegamovies.js';
+import movies4uModule from '../../src/providers/movies4u.js';
 import castleModule from '../../src/providers/castle.js';
 import domainConfig from '../../src/config/domains.js';
 
-const VERSION = '1.0.6';
+const VERSION = '1.0.7';
 const DEFAULT_TIMEOUT_MS = 12000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
@@ -55,7 +56,11 @@ async function runWorkerDiscovery(params) {
     ? deadline(vegaMoviesModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'vegamovies')
     : Promise.resolve({ provider: 'vegamovies', data: [], error: null });
 
-  const [castleRes, mdRes, vegaRes] = await Promise.all([castleJob, mdJob, vegaJob]);
+  const movies4uJob = params.providers.includes('movies4u')
+    ? deadline(movies4uModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'movies4u')
+    : Promise.resolve({ provider: 'movies4u', data: [], error: null });
+
+  const [castleRes, mdRes, vegaRes, movies4uRes] = await Promise.all([castleJob, mdJob, vegaJob, movies4uJob]);
 
   const directStreams = castleRes.data.map(stream => ({
     ...stream,
@@ -63,7 +68,7 @@ async function runWorkerDiscovery(params) {
     resolverType: 'direct'
   }));
 
-  const candidates = [...mdRes.data, ...vegaRes.data];
+  const candidates = [...mdRes.data, ...vegaRes.data, ...movies4uRes.data];
 
   return {
     directStreams,
@@ -71,7 +76,8 @@ async function runWorkerDiscovery(params) {
     providers: {
       castle: { count: castleRes.data.length, error: castleRes.error },
       moviesdrive: { count: mdRes.data.length, error: mdRes.error },
-      vegamovies: { count: vegaRes.data.length, error: vegaRes.error }
+      vegamovies: { count: vegaRes.data.length, error: vegaRes.error },
+      movies4u: { count: movies4uRes.data.length, error: movies4uRes.error }
     }
   };
 }
@@ -136,8 +142,8 @@ function parseRequest(url, env) {
   const type = normalizeType(url.searchParams.get('type'));
   const season = Number(url.searchParams.get('season') || 1);
   const episode = Number(url.searchParams.get('episode') || 1);
-  const requested = String(url.searchParams.get('providers') || 'moviesdrive,vegamovies,castle')
-    .toLowerCase().split(',').map(value => value.trim()).filter(value => ['moviesdrive', 'vegamovies', 'castle'].includes(value));
+  const requested = String(url.searchParams.get('providers') || 'moviesdrive,vegamovies,movies4u,castle')
+    .toLowerCase().split(',').map(value => value.trim()).filter(value => ['moviesdrive', 'vegamovies', 'movies4u', 'castle'].includes(value));
   const configuredTimeout = Number(env?.PROVIDER_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
   return {
     tmdbId,
@@ -191,7 +197,7 @@ export async function handleRequest(request, env = {}, ctx = {}) {
 
   const url = new URL(request.url);
   if (url.pathname === '/' || url.pathname === '/health') {
-    return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: ['moviesdrive', 'vegamovies', 'castle'] });
+    return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: ['moviesdrive', 'vegamovies', 'movies4u', 'castle'] });
   }
   if (url.pathname === '/diagnostics') {
     return json({ ok: true, version: VERSION, probes: await diagnostics() }, 200, { 'Cache-Control': 'no-store' });

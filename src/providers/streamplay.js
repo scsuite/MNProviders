@@ -1,5 +1,6 @@
 const { getStreams: getCastleStreams } = require('./castle');
 const vegaModule = require('./vegamovies');
+const movies4uModule = require('./movies4u');
 const mdModule = require('../moviesdrive/index');
 const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 const DOMAINS = require('../config/domains');
@@ -27,8 +28,16 @@ async function resolveDeviceCandidate(candidate) {
   if (!candidate || !candidate.url) return [];
   const mdResolver = mdModule.resolveCandidate || mdModule.default?.resolveCandidate;
   const vegaResolver = vegaModule.resolveCandidate || vegaModule.default?.resolveCandidate;
+  const movies4uResolver = movies4uModule.resolveCandidate || movies4uModule.default?.resolveCandidate;
 
   try {
+    if (candidate.provider === 'Movies4u') {
+      if (typeof movies4uResolver === 'function') {
+        const res = await movies4uResolver(candidate);
+        return Array.isArray(res) ? res : [];
+      }
+      return [];
+    }
     const isMoviesDriveTarget = candidate.provider === 'MoviesDrive' || /hubcloud|gdflix|gdlink/i.test(candidate.url) || candidate.resolverType === 'hubcloud' || candidate.resolverType === 'gdflix';
     if (isMoviesDriveTarget) {
       if (typeof mdResolver === 'function') {
@@ -68,14 +77,17 @@ async function resolveDeviceCandidate(candidate) {
 async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   const discoverVega = vegaModule.discoverCandidates || vegaModule.default?.discoverCandidates;
   const getVega = vegaModule.getStreams || vegaModule.default?.getStreams;
+  const discoverMovies4u = movies4uModule.discoverCandidates || movies4uModule.default?.discoverCandidates;
+  const getMovies4u = movies4uModule.getStreams || movies4uModule.default?.getStreams;
 
   const discoverMD = mdModule.discoverCandidates || mdModule.default?.discoverCandidates;
   const getMD = mdModule.getStreams || mdModule.default?.getStreams;
 
-  const [castleResult, vegaResult, mdResult] = await Promise.allSettled([
+  const [castleResult, vegaResult, mdResult, movies4uResult] = await Promise.allSettled([
     typeof getCastleStreams === 'function' ? getCastleStreams(tmdbId, mediaType, season, episode) : Promise.resolve([]),
     typeof discoverVega === 'function' ? discoverVega(tmdbId, mediaType, season, episode) : typeof getVega === 'function' ? getVega(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-    typeof discoverMD === 'function' ? discoverMD(tmdbId, mediaType, season, episode) : typeof getMD === 'function' ? getMD(tmdbId, mediaType, season, episode) : Promise.resolve([])
+    typeof discoverMD === 'function' ? discoverMD(tmdbId, mediaType, season, episode) : typeof getMD === 'function' ? getMD(tmdbId, mediaType, season, episode) : Promise.resolve([]),
+    typeof discoverMovies4u === 'function' ? discoverMovies4u(tmdbId, mediaType, season, episode) : typeof getMovies4u === 'function' ? getMovies4u(tmdbId, mediaType, season, episode) : Promise.resolve([])
   ]);
 
   const castleStreams = castleResult.status === 'fulfilled' && Array.isArray(castleResult.value)
@@ -102,7 +114,17 @@ async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
     }
   }
 
-  return [...castleStreams, ...vegaStreams, ...mdStreams];
+  let movies4uStreams = [];
+  if (movies4uResult.status === 'fulfilled' && Array.isArray(movies4uResult.value)) {
+    if (typeof discoverMovies4u === 'function') {
+      const resolved = await mapConcurrent(movies4uResult.value, 4, resolveDeviceCandidate);
+      movies4uStreams = resolved.flat().filter(Boolean);
+    } else {
+      movies4uStreams = movies4uResult.value.map(s => ({ ...s, provider: 'Movies4u' }));
+    }
+  }
+
+  return [...castleStreams, ...vegaStreams, ...mdStreams, ...movies4uStreams];
 }
 
 async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
