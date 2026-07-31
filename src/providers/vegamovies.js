@@ -1,5 +1,6 @@
 const TMDB_API = 'https://api.themoviedb.org/3';
 const { resolveVCloud } = require('./vcloud');
+const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 const TMDB_KEY = '439c478a771f35c05022f9feabcca01c';
 const DOMAINS_URL = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
 const VEGA_FALLBACK = 'https://vegamovies.catering';
@@ -127,35 +128,12 @@ function episodeReleaseLinks(html, base, season, episode) {
 }
 
 async function resolveFastdl(directPage, pageUrl) {
-  const embed = await requestText(directPage, pageUrl);
-  const match = embed.match(/(?:var\s+reurl\s*=\s*|['"])(?:https:\/\/fastdl\.[^/]+\/dl\.php\?link=)(https:\/\/video-downloads\.googleusercontent\.com\/[^'"\s<]+)/i);
-  if (!match) return null;
-  return { name: 'G-Direct (VLC)', url: match[1].replace(/&amp;/g, '&'), referer: directPage, compatibility: 'external' };
-}
-
-async function resolveRelease(pageUrl, base, episode, label) {
-  const page = await requestText(pageUrl, base);
-  let routes = [];
-  if (episode) {
-    const episodeRegex = new RegExp(`episodes?\\s*:\\s*0?${episode}(?:\\D|$)`, 'i');
-    for (const block of headingBlocks(page)) {
-      if (!episodeRegex.test(block.heading)) continue;
-      routes = anchors(block.body, pageUrl);
-      break;
-    }
-  } else {
-    routes = anchors(page, pageUrl);
-  }
-  const useful = routes.filter(item => /g-?direct|instant|fastdl|v-?cloud|resumable|vcloud\.zip/i.test(item.text + ' ' + item.url));
-  const results = await Promise.all(useful.slice(0, 4).map(async route => {
-    if (/vcloud\.zip|v-?cloud|resumable/i.test(route.text + ' ' + route.url)) {
-      const resolved = await resolveVCloud(route.url, pageUrl, label);
-      return resolved.streams.map(stream => ({ ...stream, referer: stream.headers && stream.headers.Referer, compatibility: 'internal' }));
-    }
-    const direct = await resolveFastdl(route.url, pageUrl);
-    return direct ? [direct] : [];
-  }));
-  return results.flat();
+  try {
+    const embed = await requestText(directPage, pageUrl);
+    const match = embed.match(/(?:var\s+reurl\s*=\s*|['"])(?:https:\/\/fastdl\.[^/]+\/dl\.php\?link=)(https:\/\/video-downloads\.googleusercontent\.com\/[^'"\s<]+)/i);
+    if (!match) return null;
+    return { name: 'G-Direct (VLC)', url: match[1].replace(/&amp;/g, '&'), referer: directPage, compatibility: 'external' };
+  } catch (_) { return null; }
 }
 
 function qualityFrom(label) {
@@ -164,7 +142,7 @@ function qualityFrom(label) {
   return match[1] === '2160' ? '4K' : `${match[1]}p`;
 }
 
-async function getStreams(tmdbId, mediaType, season, episode, options = {}) {
+async function discoverCandidates(tmdbId, mediaType, season, episode) {
   if (!tmdbId || !['movie', 'tv'].includes(mediaType)) return [];
   if (mediaType === 'tv' && (!season || !episode)) return [];
   try {
@@ -178,38 +156,96 @@ async function getStreams(tmdbId, mediaType, season, episode, options = {}) {
     const releases = mediaType === 'movie'
       ? movieReleaseLinks(detail, base)
       : episodeReleaseLinks(detail, base, Number(season), Number(episode));
-    const maxReleases = Math.max(1, Number(options.maxReleases) || 10);
-    const selected = options.onePerQuality
-      ? releases.filter((release, index, all) => {
-          const quality = qualityFrom(release.label);
-          return quality !== 'Unknown' && all.findIndex(item => qualityFrom(item.label) === quality) === index;
-        }).sort((a, b) => {
-          const rank = { '4K': 2160, '1080p': 1080, '720p': 720, '480p': 480, '360p': 360 };
-          return (rank[qualityFrom(b.label)] || 0) - (rank[qualityFrom(a.label)] || 0);
-        }).slice(0, maxReleases)
-      : releases.slice(0, maxReleases);
-    const resolved = await Promise.all(selected.map(async release => {
+
+    const candidateJobs = releases.map(async release => {
       try {
-        const directLinks = await resolveRelease(release.url, base, mediaType === 'tv' ? Number(episode) : null, release.label);
+        const page = await requestText(release.url, base);
+        let routes = [];
+        if (mediaType === 'tv' && episode) {
+          const episodeRegex = new RegExp(`episodes?\\s*:\\s*0?${episode}(?:\\D|$)`, 'i');
+          for (const block of headingBlocks(page)) {
+            if (!episodeRegex.test(block.heading)) continue;
+            routes = anchors(block.body, release.url);
+            break;
+          }
+        } else {
+          routes = anchors(page, release.url);
+        }
+        const useful = routes.filter(item => /g-?direct|instant|fastdl|v-?cloud|resumable|vcloud\.zip/i.test(item.text + ' ' + item.url));
         const quality = qualityFrom(release.label);
-        return directLinks.map(direct => ({
-          name: `StreamPlay VegaMovies ${direct.name} - ${quality}`,
-          title: mediaType === 'tv' ? `${media.title} S${season}E${episode}` : media.title,
-          url: direct.url,
-          quality,
-          headers: direct.headers || { 'User-Agent': USER_AGENT, Referer: direct.referer },
+        return useful.map(route => ({
           provider: 'vegamovies',
-          compatibility: direct.compatibility,
-          subtitles: []
+          source: /vcloud\.zip|v-?cloud|resumable/i.test(route.text + ' ' + route.url) ? 'VCloud' : 'FastDL',
+          quality,
+          url: route.url,
+          label: release.label,
+          referer: release.url,
+          headers: { 'User-Agent': USER_AGENT, Referer: release.url },
+          resolverType: /vcloud\.zip|v-?cloud|resumable/i.test(route.text + ' ' + route.url) ? 'vcloud' : 'fastdl'
         }));
       } catch (_) { return []; }
-    }));
-    const flat = resolved.flat().filter(Boolean);
-    return flat.filter((item, index, all) => all.findIndex(other => other.url === item.url) === index);
+    });
+
+    const candidatesList = await Promise.all(candidateJobs);
+    return candidatesList.flat();
+  } catch (error) {
+    console.log(`[VegaMovies Candidates] ${error && error.message ? error.message : error}`);
+    return [];
+  }
+}
+
+async function resolveCandidate(candidate) {
+  if (!candidate || !candidate.url) return [];
+  try {
+    if (candidate.resolverType === 'vcloud') {
+      const resolved = await resolveVCloud(candidate.url, candidate.referer, candidate.label || candidate.quality);
+      return (resolved.streams || []).map(stream => ({
+        ...stream,
+        quality: candidate.quality || stream.quality,
+        provider: 'vegamovies',
+        source: stream.name || 'VCloud',
+        subtitles: []
+      }));
+    } else if (candidate.resolverType === 'fastdl') {
+      const direct = await resolveFastdl(candidate.url, candidate.referer);
+      if (!direct) return [];
+      return [{
+        name: `VegaMovies G-Direct - ${candidate.quality || 'Unknown'}`,
+        title: candidate.label || 'VegaMovies Stream',
+        url: direct.url,
+        quality: candidate.quality || 'Unknown',
+        headers: { 'User-Agent': USER_AGENT, Referer: candidate.referer },
+        provider: 'vegamovies',
+        source: 'FastDL',
+        subtitles: []
+      }];
+    } else if (candidate.resolverType === 'direct') {
+      return [{
+        name: `VegaMovies Direct - ${candidate.quality || 'Unknown'}`,
+        url: candidate.url,
+        quality: candidate.quality || 'Unknown',
+        headers: candidate.headers,
+        provider: 'vegamovies',
+        source: candidate.source || 'Direct',
+        subtitles: []
+      }];
+    }
+    return [];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function getStreams(tmdbId, mediaType, season, episode, options = {}) {
+  try {
+    const candidates = await discoverCandidates(tmdbId, mediaType, season, episode);
+    const resolvedResults = await mapConcurrent(candidates, 4, resolveCandidate);
+    const flat = resolvedResults.flat().filter(Boolean);
+    return uniqueExactStreams(flat);
   } catch (error) {
     console.log(`[VegaMovies] ${error && error.message ? error.message : error}`);
     return [];
   }
 }
 
-module.exports = { getStreams };
+module.exports = { discoverCandidates, resolveCandidate, getStreams };

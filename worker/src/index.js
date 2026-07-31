@@ -2,15 +2,10 @@ import moviesDriveModule from '../../src/moviesdrive/index.js';
 import vegaMoviesModule from '../../src/providers/vegamovies.js';
 import castleModule from '../../src/providers/castle.js';
 
-const VERSION = '1.0.4';
+const VERSION = '1.0.5';
 const DEFAULT_TIMEOUT_MS = 12000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
-const PROVIDERS = {
-  moviesdrive: moviesDriveModule.getStreams,
-  vegamovies: vegaMoviesModule.getStreams,
-  castle: castleModule.getStreams
-};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -33,81 +28,50 @@ function normalizeType(value) {
   return /^(tv|series|show)$/i.test(String(value || '')) ? 'tv' : 'movie';
 }
 
-function qualityValue(value) {
-  const text = String(value || '').toLowerCase();
-  if (/4k|2160/.test(text)) return 2160;
-  const match = text.match(/(1080|720|480|360|240)/);
-  return match ? Number(match[1]) : 0;
-}
-
-function displayQuality(value) {
-  const rank = qualityValue(value);
-  return rank === 2160 ? '4K' : rank ? `${rank}p` : 'Unknown';
-}
-
-function sourceName(stream, provider) {
-  return stream.source || stream.provider || provider;
-}
-
-function normalizeStream(stream, provider) {
-  if (!stream || !stream.url) return null;
-  const quality = displayQuality(stream.quality || stream.name || stream.title);
-  const source = sourceName(stream, provider);
-  const order = { '4K': '01', '1080p': '02', '720p': '03', '480p': '04', '360p': '05', '240p': '06' };
-  return {
-    ...stream,
-    name: `${order[quality] || '99'} • ${quality} • ${source}`,
-    quality,
-    source,
-    provider,
-    headers: stream.headers || {},
-    subtitles: Array.isArray(stream.subtitles) ? stream.subtitles : []
-  };
-}
-
-function sortAndUnique(streams) {
-  const seen = new Set();
-  return streams
-    .map(item => normalizeStream(item.stream, item.provider))
-    .filter(stream => {
-      if (!stream) return false;
-      const key = `${stream.quality}|${stream.source}|${stream.url}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => qualityValue(b.quality) - qualityValue(a.quality));
-}
-
 function deadline(promise, milliseconds, provider) {
   let timer;
   const timeout = new Promise(resolve => {
-    timer = setTimeout(() => resolve({ provider, streams: [], error: `timeout after ${milliseconds}ms` }), milliseconds);
+    timer = setTimeout(() => resolve({ provider, data: [], error: `timeout after ${milliseconds}ms` }), milliseconds);
   });
   return Promise.race([
     Promise.resolve(promise)
-      .then(streams => ({ provider, streams: Array.isArray(streams) ? streams : [], error: null }))
-      .catch(error => ({ provider, streams: [], error: error?.message || String(error) })),
+      .then(data => ({ provider, data: Array.isArray(data) ? data : [], error: null }))
+      .catch(error => ({ provider, data: [], error: error?.message || String(error) })),
     timeout
   ]).finally(() => clearTimeout(timer));
 }
 
-async function runProviders(params) {
-  const jobs = params.providers.map(provider => deadline(
-    PROVIDERS[provider](params.tmdbId, params.type, params.season, params.episode),
-    params.timeout,
-    provider
-  ));
-  const settled = await Promise.all(jobs);
-  const streams = sortAndUnique(settled.flatMap(result =>
-    result.streams.map(stream => ({ provider: result.provider, stream }))
-  ));
+async function runWorkerDiscovery(params) {
+  const castleJob = params.providers.includes('castle')
+    ? deadline(castleModule.getStreams(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'castle')
+    : Promise.resolve({ provider: 'castle', data: [], error: null });
+
+  const mdJob = params.providers.includes('moviesdrive')
+    ? deadline(moviesDriveModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'moviesdrive')
+    : Promise.resolve({ provider: 'moviesdrive', data: [], error: null });
+
+  const vegaJob = params.providers.includes('vegamovies')
+    ? deadline(vegaMoviesModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'vegamovies')
+    : Promise.resolve({ provider: 'vegamovies', data: [], error: null });
+
+  const [castleRes, mdRes, vegaRes] = await Promise.all([castleJob, mdJob, vegaJob]);
+
+  const directStreams = castleRes.data.map(stream => ({
+    ...stream,
+    provider: 'castle',
+    resolverType: 'direct'
+  }));
+
+  const candidates = [...mdRes.data, ...vegaRes.data];
+
   return {
-    streams,
-    providers: Object.fromEntries(settled.map(result => [result.provider, {
-      count: result.streams.length,
-      error: result.error
-    }]))
+    directStreams,
+    candidates,
+    providers: {
+      castle: { count: castleRes.data.length, error: castleRes.error },
+      moviesdrive: { count: mdRes.data.length, error: mdRes.error },
+      vegamovies: { count: vegaRes.data.length, error: vegaRes.error }
+    }
   };
 }
 
@@ -139,12 +103,11 @@ async function probe(url, referer) {
 
 async function diagnostics() {
   const domainsUrl = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
-  const [tmdb, domains, moviesdriveFallback, vegaRelease, hubcloud] = await Promise.all([
+  const [tmdb, domains, moviesdriveFallback, vegaRelease] = await Promise.all([
     probe('https://api.themoviedb.org/3/tv/108978?api_key=439c478a771f35c05022f9feabcca01c'),
     probe(domainsUrl),
     probe('https://new1.moviesdrive.christmas/search.php?q=Reacher&page=1', 'https://new1.moviesdrive.christmas/'),
-    probe('https://nexdrive.fit/genxfm784776338494/', 'https://vegamovies.catering/'),
-    probe('https://hubcloud.cx/drive/ctroctdoeoo8bk9', 'https://new1.moviesdrive.christmas/')
+    probe('https://nexdrive.fit/genxfm784776338494/', 'https://vegamovies.catering/')
   ]);
   let moviesdrive = { ok: false, error: 'MoviesDrive domain unavailable' };
   let vegamovies = { ok: false, error: 'Vega domain unavailable' };
@@ -164,7 +127,7 @@ async function diagnostics() {
       vegamovies = { ok: false, error: error?.message || String(error) };
     }
   }
-  return { tmdb, domains, moviesdrive, moviesdriveFallback, hubcloud, vegamovies, vegaDetail, vegaRelease };
+  return { tmdb, domains, moviesdrive, moviesdriveFallback, vegamovies, vegaDetail, vegaRelease };
 }
 
 function parseRequest(url, env) {
@@ -173,7 +136,7 @@ function parseRequest(url, env) {
   const season = Number(url.searchParams.get('season') || 1);
   const episode = Number(url.searchParams.get('episode') || 1);
   const requested = String(url.searchParams.get('providers') || 'moviesdrive,vegamovies,castle')
-    .toLowerCase().split(',').map(value => value.trim()).filter(value => PROVIDERS[value]);
+    .toLowerCase().split(',').map(value => value.trim()).filter(value => ['moviesdrive', 'vegamovies', 'castle'].includes(value));
   const configuredTimeout = Number(env?.PROVIDER_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
   return {
     tmdbId,
@@ -199,17 +162,19 @@ async function cachedResponse(request, env, ctx, params) {
   }
 
   const started = Date.now();
-  const result = await runProviders(params);
+  const result = await runWorkerDiscovery(params);
+  const totalCount = result.directStreams.length + result.candidates.length;
   const payload = {
     ok: true,
     version: VERSION,
     query: { tmdbId: params.tmdbId, type: params.type, season: params.season, episode: params.episode },
     elapsedMs: Date.now() - started,
-    count: result.streams.length,
-    streams: result.streams,
+    count: totalCount,
+    directStreams: result.directStreams,
+    candidates: result.candidates,
     providers: result.providers
   };
-  const complete = params.providers.every(provider => result.providers[provider]?.count > 0);
+  const complete = params.providers.every(provider => (result.providers[provider]?.count || 0) > 0);
   const cacheSeconds = complete ? CACHE_SECONDS : PARTIAL_CACHE_SECONDS;
   const response = json(payload, 200, {
     'Cache-Control': `public, max-age=${cacheSeconds}`,
@@ -225,7 +190,7 @@ export async function handleRequest(request, env = {}, ctx = {}) {
 
   const url = new URL(request.url);
   if (url.pathname === '/' || url.pathname === '/health') {
-    return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: Object.keys(PROVIDERS) });
+    return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: ['moviesdrive', 'vegamovies', 'castle'] });
   }
   if (url.pathname === '/diagnostics') {
     return json({ ok: true, version: VERSION, probes: await diagnostics() }, 200, { 'Cache-Control': 'no-store' });

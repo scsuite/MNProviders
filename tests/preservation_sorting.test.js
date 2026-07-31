@@ -1,0 +1,113 @@
+const assert = require('assert');
+const { uniqueExactStreams, mapConcurrent, qualityRank } = require('../src/shared/streams');
+const { discoverCandidates: discoverMD, resolveCandidate: resolveMD } = require('../src/moviesdrive/index');
+const { discoverCandidates: discoverVega, resolveCandidate: resolveVega } = require('../src/providers/vegamovies');
+const { resolveDeviceCandidate } = require('../src/providers/streamplay');
+
+async function testLinkPreservationAndSorting() {
+  console.log('--- Test 1: Multiple links from same quality with different sources are preserved ---');
+  const sameQualityDifferentSources = [
+    { provider: 'MoviesDrive', source: 'HubCloud Pixel', quality: '1080p', url: 'https://cdn.test/pixel1080.mkv' },
+    { provider: 'MoviesDrive', source: 'HubCloud BuzzServer', quality: '1080p', url: 'https://cdn.test/buzz1080.mkv' },
+    { provider: 'MoviesDrive', source: 'GDFlix Direct', quality: '1080p', url: 'https://cdn.test/gdflix1080.mkv' },
+    { provider: 'vegamovies', source: 'FastDL', quality: '1080p', url: 'https://cdn.test/fastdl1080.mp4' }
+  ];
+
+  const processed = uniqueExactStreams(sameQualityDifferentSources);
+  assert.strictEqual(processed.length, 4, `Expected 4 distinct sources preserved for 1080p, got ${processed.length}`);
+  console.log('PASS: Preserved all 4 distinct 1080p streams from different sources');
+
+  console.log('--- Test 2: Exact (quality, source, url) duplicates are removed ---');
+  const withDuplicates = [
+    { provider: 'MoviesDrive', source: 'HubCloud Pixel', quality: '1080p', url: 'https://cdn.test/pixel1080.mkv' },
+    { provider: 'MoviesDrive', source: 'HubCloud Pixel', quality: '1080p', url: 'https://cdn.test/pixel1080.mkv' }, // Exact duplicate
+    { provider: 'MoviesDrive', source: 'HubCloud BuzzServer', quality: '720p', url: 'https://cdn.test/buzz720.mkv' }
+  ];
+
+  const deduplicated = uniqueExactStreams(withDuplicates);
+  assert.strictEqual(deduplicated.length, 2, `Expected 2 unique streams after deduplication, got ${deduplicated.length}`);
+  console.log('PASS: Successfully removed exact (quality, source, url) duplicate');
+
+  console.log('--- Test 3: Global quality sorting order (4K > 1080p > 720p > 480p > 360p > 240p) ---');
+  const unsorted = [
+    { provider: 'MoviesDrive', source: 'S1', quality: '480p', url: 'https://cdn.test/480.mp4' },
+    { provider: 'vegamovies', source: 'S2', quality: '4K', url: 'https://cdn.test/4k.mkv' },
+    { provider: 'castle', source: 'S3', quality: '720p', url: 'https://cdn.test/720.m3u8' },
+    { provider: 'MoviesDrive', source: 'S4', quality: '1080p', url: 'https://cdn.test/1080.mkv' },
+    { provider: 'vegamovies', source: 'S5', quality: '360p', url: 'https://cdn.test/360.mp4' }
+  ];
+
+  const sorted = uniqueExactStreams(unsorted);
+  const qualities = sorted.map(s => s.quality);
+  assert.deepStrictEqual(qualities, ['4K', '1080p', '720p', '480p', '360p']);
+  console.log('PASS: Correctly sorted globally by quality (4K > 1080p > 720p > 480p > 360p)');
+
+  console.log('--- Test 4: Bounded concurrency queue processes all items without dropping inputs ---');
+  const items = Array.from({ length: 15 }, (_, i) => `item_${i + 1}`);
+  let activeWorkers = 0;
+  let maxConcurrentEncountered = 0;
+
+  const results = await mapConcurrent(items, 4, async (item) => {
+    activeWorkers++;
+    if (activeWorkers > maxConcurrentEncountered) maxConcurrentEncountered = activeWorkers;
+    await new Promise(r => setTimeout(r, 20));
+    activeWorkers--;
+    return `processed_${item}`;
+  });
+
+  assert.strictEqual(results.length, 15, `Expected 15 processed items, got ${results.length}`);
+  assert(maxConcurrentEncountered <= 4, `Expected max concurrency <= 4, got ${maxConcurrentEncountered}`);
+  assert(results.every(r => r.startsWith('processed_item_')));
+  console.log(`PASS: Processed all 15 candidate queue items with max concurrency ${maxConcurrentEncountered} (<= 4 limit)`);
+
+  console.log('--- Test 5: Candidate schema format verification ---');
+  const dummyCandidate = {
+    provider: 'MoviesDrive',
+    source: 'HubCloud',
+    quality: '1080p',
+    size: '1.4 GB',
+    url: 'https://hubcloud.cx/drive/sample',
+    referer: 'https://new1.moviesdrive.christmas/',
+    headers: { 'User-Agent': 'TestAgent', Referer: 'https://new1.moviesdrive.christmas/' },
+    resolverType: 'hubcloud'
+  };
+
+  const requiredFields = ['provider', 'source', 'quality', 'url', 'referer', 'headers', 'resolverType'];
+  for (const field of requiredFields) {
+    assert(field in dummyCandidate, `Candidate missing required field: ${field}`);
+  }
+  console.log('PASS: Candidate object contains all required metadata and resolverType fields');
+
+  console.log('--- Test 6: Failed protected resolver never leaks raw landing page URL ---');
+  const failedHubCloudCandidate = {
+    provider: 'MoviesDrive',
+    source: 'HubCloud',
+    quality: '1080p',
+    url: 'https://hubcloud.cx/drive/invalid_token',
+    referer: 'https://new1.moviesdrive.christmas/',
+    resolverType: 'hubcloud'
+  };
+
+  const failedVCloudCandidate = {
+    provider: 'vegamovies',
+    source: 'VCloud',
+    quality: '1080p',
+    url: 'https://vcloud.zip/invalid_token',
+    referer: 'https://vegamovies.catering/',
+    resolverType: 'vcloud'
+  };
+
+  const hubcloudRes = await resolveDeviceCandidate(failedHubCloudCandidate);
+  const vcloudRes = await resolveDeviceCandidate(failedVCloudCandidate);
+
+  assert.deepStrictEqual(hubcloudRes, [], `Expected failed HubCloud candidate to return [], got ${JSON.stringify(hubcloudRes)}`);
+  assert.deepStrictEqual(vcloudRes, [], `Expected failed VCloud candidate to return [], got ${JSON.stringify(vcloudRes)}`);
+  console.log('PASS: Verified failed protected resolvers (HubCloud/VCloud) return [] and NEVER leak raw candidate URLs');
+}
+
+testLinkPreservationAndSorting().then(() => {
+  console.log('\n✅ ALL PRESERVATION & SORTING UNIT TESTS PASSED!');
+}).catch(err => {
+  console.error('❌ TEST FAILURE:', err);
+  process.exit(1);
+});

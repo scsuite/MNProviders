@@ -114,6 +114,72 @@ async function resolveFinalUrl(url, options = {}, depth = 0) {
   return null;
 }
 
+function qualityRank(quality) {
+  const text = String(quality || '').toUpperCase();
+  if (text === '4K' || text.includes('2160')) return 2160;
+  const match = text.match(/(1440|1080|720|576|480|360|240)/);
+  return match ? Number(match[1]) : 0;
+}
+
+function normalizeDisplayQuality(value) {
+  const rank = qualityRank(value);
+  return rank === 2160 ? '4K' : rank > 0 ? `${rank}p` : 'Unknown';
+}
+
+function qualityOrderPrefix(quality) {
+  const map = { '4K': '01', '1080p': '02', '720p': '03', '480p': '04', '360p': '05', '240p': '06' };
+  return map[quality] || '99';
+}
+
+function uniqueExactStreams(streams) {
+  const seen = new Set();
+  const valid = [];
+  for (const stream of streams || []) {
+    if (!stream || !stream.url) continue;
+    const quality = normalizeDisplayQuality(stream.quality || stream.name || stream.title);
+    const source = stream.source || stream.provider || 'Direct';
+    const key = `${quality}|${source}|${stream.url}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const provider = stream.provider || 'StreamPlay';
+    const namePrefix = `${qualityOrderPrefix(quality)} • ${provider} • ${quality} • ${source}`;
+    valid.push({
+      ...stream,
+      name: stream.name && stream.name.startsWith(qualityOrderPrefix(quality)) ? stream.name : namePrefix,
+      quality,
+      source,
+      provider
+    });
+  }
+  return valid.sort((a, b) => qualityRank(b.quality) - qualityRank(a.quality));
+}
+
+async function mapConcurrent(items, concurrency, fn) {
+  if (!Array.isArray(items) || !items.length) return [];
+  const limit = Math.max(1, Number(concurrency) || 4);
+  const results = new Array(items.length);
+  let index = 0;
+
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      try {
+        results[i] = await fn(items[i], i);
+      } catch (err) {
+        results[i] = null;
+      }
+    }
+  }
+
+  const workers = [];
+  for (let w = 0; w < Math.min(limit, items.length); w++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
 module.exports = {
   MEDIA_EXTENSION,
   PLACEHOLDER_MEDIA,
@@ -122,6 +188,11 @@ module.exports = {
   normalizeSubtitles,
   parseMediaAttributes,
   parseQuality,
+  qualityRank,
+  normalizeDisplayQuality,
+  qualityOrderPrefix,
   resolveFinalUrl,
-  uniqueStreams
+  uniqueStreams,
+  uniqueExactStreams,
+  mapConcurrent
 };

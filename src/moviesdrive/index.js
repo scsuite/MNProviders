@@ -1,6 +1,7 @@
 import cheerio from 'cheerio-without-node-native';
 import { HEADERS, MAIN_URL, TMDB_API_KEY } from './constants.js';
-import { expandMovieButton, extractHost, sortAndUnique } from './extractor.js';
+import { expandMovieButton, extractHost } from './extractor.js';
+import { mapConcurrent, uniqueExactStreams } from '../shared/streams.js';
 
 const DOMAINS_URL = 'https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/domains.json';
 
@@ -60,8 +61,6 @@ function seasonPages($, season) {
     let node = $(heading).next();
     let traversed = 0;
     while (node.length && traversed++ < 100) {
-      // Nuvio's lightweight Cheerio bridge exposes no DOM node indexes and
-      // does not implement addBack(). Text boundaries work in both Nuvio and Node.
       const nodeText = node.text();
       const anchors = node.attr('href') ? [node] : node.find('a[href]').get();
       anchors.forEach(anchor => {
@@ -109,7 +108,7 @@ function episodeLinks($, episode) {
   return result;
 }
 
-async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+export async function discoverCandidates(tmdbId, mediaType, season = 1, episode = 1) {
   try {
     const type = normalizeType(mediaType);
     const seasonNumber = Number(season) || 1;
@@ -155,16 +154,69 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
       const expanded = await expandMovieButton(url, typeof item === 'string' ? {} : item);
       return expanded.map(expandedUrl => typeof item === 'string' ? expandedUrl : { ...item, url: expandedUrl });
     }))).flat();
-    const extracted = await Promise.all(expandedHosts.map(item => {
+
+    return expandedHosts.map(item => {
       const hint = typeof item === 'string' ? {} : item;
       const url = typeof item === 'string' ? item : item.url;
-      return extractHost(url, hint.referer || mediaUrl, hint);
+      const referer = hint.referer || mediaUrl;
+      const isGdflix = /gdflix|gdlink/i.test(url);
+      const isHubcloud = /hubcloud/i.test(url);
+      return {
+        provider: 'MoviesDrive',
+        source: isGdflix ? 'GDFlix' : isHubcloud ? 'HubCloud' : 'MoviesDrive Host',
+        quality: hint.quality || 'Unknown',
+        size: hint.size,
+        url,
+        referer,
+        headers: { ...HEADERS, Referer: referer },
+        resolverType: isGdflix ? 'gdflix' : isHubcloud ? 'hubcloud' : 'direct'
+      };
+    });
+  } catch (error) {
+    console.error('[MoviesDrive Candidate Discovery] Error:', error.message);
+    return [];
+  }
+}
+
+export async function resolveCandidate(candidate) {
+  if (!candidate || !candidate.url) return [];
+  try {
+    if (candidate.resolverType === 'direct') {
+      return [{
+        name: candidate.name || `MoviesDrive • ${candidate.quality || 'Unknown'} • ${candidate.source || 'Direct'}`,
+        title: candidate.title,
+        url: candidate.url,
+        quality: candidate.quality || 'Unknown',
+        size: candidate.size,
+        headers: candidate.headers || HEADERS,
+        provider: 'MoviesDrive',
+        source: candidate.source || 'Direct',
+        subtitles: []
+      }];
+    }
+    const streams = await extractHost(candidate.url, candidate.referer || MAIN_URL, {
+      quality: candidate.quality,
+      size: candidate.size
+    });
+    return (streams || []).map(stream => ({
+      ...stream,
+      provider: 'MoviesDrive'
     }));
-    return sortAndUnique(extracted.flat());
+  } catch (error) {
+    return [];
+  }
+}
+
+export async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+  try {
+    const candidates = await discoverCandidates(tmdbId, mediaType, season, episode);
+    const resolvedResults = await mapConcurrent(candidates, 4, resolveCandidate);
+    const flatStreams = resolvedResults.flat().filter(Boolean);
+    return uniqueExactStreams(flatStreams);
   } catch (error) {
     console.error('[MoviesDrive] Error:', error.message);
     return [];
   }
 }
 
-module.exports = { getStreams };
+export default { discoverCandidates, resolveCandidate, getStreams };

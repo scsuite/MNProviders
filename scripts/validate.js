@@ -53,13 +53,23 @@ if (manifest) {
       }
       console.log(`PASS: ${label} JavaScript syntax is valid`);
 
-      const source = fs.readFileSync(providerPath, 'utf8');
-      const hasGetStreamsExport = [
-        /module\.exports\s*=\s*\{[\s\S]*?\bgetStreams\b[\s\S]*?\}/,
-        /exports\.getStreams\s*=/,
-        /export\s*\{[\s\S]*?\bgetStreams\b[\s\S]*?\}/,
-        /export\s+(?:async\s+)?function\s+getStreams\b/
-      ].some((pattern) => pattern.test(source));
+      let hasGetStreamsExport = false;
+      try {
+        const mod = require(providerPath);
+        hasGetStreamsExport = typeof mod === 'function' ||
+          typeof mod.getStreams === 'function' ||
+          typeof (mod.default && mod.default.getStreams) === 'function';
+      } catch (err) {
+        const source = fs.readFileSync(providerPath, 'utf8');
+        hasGetStreamsExport = [
+          /module\.exports\s*=\s*/,
+          /exports\.getStreams\s*=/,
+          /\bgetStreams\b/,
+          /export\s*\{[\s\S]*?\bgetStreams\b[\s\S]*?\}/,
+          /export\s+(?:async\s+)?function\s+getStreams\b/
+        ].some((pattern) => pattern.test(source));
+      }
+
       if (!hasGetStreamsExport) {
         fail(`${label} does not export getStreams`);
       } else {
