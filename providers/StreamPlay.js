@@ -2926,7 +2926,8 @@ var mdModule = (init_moviesdrive(), __toCommonJS(moviesdrive_exports));
 var { mapConcurrent: mapConcurrent2, uniqueExactStreams: uniqueExactStreams2 } = require_streams();
 var DOMAINS4 = require_domains();
 var WORKER_BASE = DOMAINS4.WORKER;
-var CANDIDATE_TIMEOUT_MS = 1e4;
+var CANDIDATE_TIMEOUT_MS = 4500;
+var DEVICE_RESOLUTION_CONCURRENCY = 32;
 function withTimeout(promise, milliseconds = CANDIDATE_TIMEOUT_MS) {
   let timer;
   const timeout = new Promise((resolve) => {
@@ -3124,7 +3125,7 @@ function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
         provider: s.provider || "castle",
         source: s.source || s.name || "Castle"
       }));
-      const resolutionJob = mapConcurrent2(workerData.candidates || [], 14, resolveCandidateBounded);
+      const resolutionJob = mapConcurrent2(workerData.candidates || [], DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded);
       const providerFallbackJobs = [];
       const workerReported4KHDHub = workerData.providers && Object.prototype.hasOwnProperty.call(workerData.providers, "4khdhub");
       const worker4KCount = Number(((_b = (_a = workerData.providers) == null ? void 0 : _a["4khdhub"]) == null ? void 0 : _b.count) || 0);

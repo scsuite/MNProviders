@@ -9,7 +9,8 @@ const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 const DOMAINS = require('../config/domains');
 
 const WORKER_BASE = DOMAINS.WORKER;
-const CANDIDATE_TIMEOUT_MS = 10000;
+const CANDIDATE_TIMEOUT_MS = 4500;
+const DEVICE_RESOLUTION_CONCURRENCY = 32;
 
 function withTimeout(promise, milliseconds = CANDIDATE_TIMEOUT_MS) {
   let timer;
@@ -219,10 +220,10 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
       source: s.source || s.name || 'Castle'
     }));
 
-    // Candidate resolution is the dominant cost on link-heavy titles. Fourteen
-    // concurrent lightweight resolver requests avoids dozens of serial network
-    // batches while still bounding mobile socket usage.
-    const resolutionJob = mapConcurrent(workerData.candidates || [], 14, resolveCandidateBounded);
+    // Nuvio imposes an addon response deadline. Resolve the Worker-discovered
+    // queue in a wide bounded batch so dead hosts cannot push an otherwise
+    // valid response beyond that deadline.
+    const resolutionJob = mapConcurrent(workerData.candidates || [], DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded);
     const providerFallbackJobs = [];
 
     // Some sites allow the user device but block Cloudflare Worker IPs. An
