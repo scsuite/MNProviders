@@ -3,6 +3,7 @@ const vegaModule = require('./vegamovies');
 const movies4uModule = require('./movies4u');
 const fourkHDHubModule = require('./fourkHDhub');
 const multiMoviesModule = require('./multimovies');
+const hdHub4uModule = require('./hdhub4u');
 const mdModule = require('../moviesdrive/index');
 const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 const DOMAINS = require('../config/domains');
@@ -33,6 +34,7 @@ async function resolveDeviceCandidate(candidate) {
   const movies4uResolver = movies4uModule.resolveCandidate || movies4uModule.default?.resolveCandidate;
   const fourkHDHubResolver = fourkHDHubModule.resolveCandidate || fourkHDHubModule.default?.resolveCandidate;
   const multiMoviesResolver = multiMoviesModule.resolveCandidate || multiMoviesModule.default?.resolveCandidate;
+  const hdHub4uResolver = hdHub4uModule.resolveCandidate || hdHub4uModule.default?.resolveCandidate;
 
   try {
     if (candidate.provider === 'Movies4u') {
@@ -52,6 +54,13 @@ async function resolveDeviceCandidate(candidate) {
     if (candidate.provider === 'MultiMovies') {
       if (typeof multiMoviesResolver === 'function') {
         const res = await multiMoviesResolver(candidate);
+        return Array.isArray(res) ? res : [];
+      }
+      return [];
+    }
+    if (candidate.provider === 'HDHub4u') {
+      if (typeof hdHub4uResolver === 'function') {
+        const res = await hdHub4uResolver(candidate);
         return Array.isArray(res) ? res : [];
       }
       return [];
@@ -101,17 +110,20 @@ async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   const get4KHDHub = fourkHDHubModule.getStreams || fourkHDHubModule.default?.getStreams;
   const discoverMultiMovies = multiMoviesModule.discoverCandidates || multiMoviesModule.default?.discoverCandidates;
   const getMultiMovies = multiMoviesModule.getStreams || multiMoviesModule.default?.getStreams;
+  const discoverHDHub4u = hdHub4uModule.discoverCandidates || hdHub4uModule.default?.discoverCandidates;
+  const getHDHub4u = hdHub4uModule.getStreams || hdHub4uModule.default?.getStreams;
 
   const discoverMD = mdModule.discoverCandidates || mdModule.default?.discoverCandidates;
   const getMD = mdModule.getStreams || mdModule.default?.getStreams;
 
-  const [castleResult, vegaResult, mdResult, movies4uResult, fourkHDHubResult, multiMoviesResult] = await Promise.allSettled([
+  const [castleResult, vegaResult, mdResult, movies4uResult, fourkHDHubResult, multiMoviesResult, hdHub4uResult] = await Promise.allSettled([
     typeof getCastleStreams === 'function' ? getCastleStreams(tmdbId, mediaType, season, episode) : Promise.resolve([]),
     typeof discoverVega === 'function' ? discoverVega(tmdbId, mediaType, season, episode) : typeof getVega === 'function' ? getVega(tmdbId, mediaType, season, episode) : Promise.resolve([]),
     typeof discoverMD === 'function' ? discoverMD(tmdbId, mediaType, season, episode) : typeof getMD === 'function' ? getMD(tmdbId, mediaType, season, episode) : Promise.resolve([]),
     typeof discoverMovies4u === 'function' ? discoverMovies4u(tmdbId, mediaType, season, episode) : typeof getMovies4u === 'function' ? getMovies4u(tmdbId, mediaType, season, episode) : Promise.resolve([]),
     typeof discover4KHDHub === 'function' ? discover4KHDHub(tmdbId, mediaType, season, episode) : typeof get4KHDHub === 'function' ? get4KHDHub(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-    typeof discoverMultiMovies === 'function' ? discoverMultiMovies(tmdbId, mediaType, season, episode) : typeof getMultiMovies === 'function' ? getMultiMovies(tmdbId, mediaType, season, episode) : Promise.resolve([])
+    typeof discoverMultiMovies === 'function' ? discoverMultiMovies(tmdbId, mediaType, season, episode) : typeof getMultiMovies === 'function' ? getMultiMovies(tmdbId, mediaType, season, episode) : Promise.resolve([]),
+    typeof discoverHDHub4u === 'function' ? discoverHDHub4u(tmdbId, mediaType, season, episode) : typeof getHDHub4u === 'function' ? getHDHub4u(tmdbId, mediaType, season, episode) : Promise.resolve([])
   ]);
 
   const castleStreams = castleResult.status === 'fulfilled' && Array.isArray(castleResult.value)
@@ -168,7 +180,16 @@ async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
     }
   }
 
-  return [...castleStreams, ...vegaStreams, ...mdStreams, ...movies4uStreams, ...fourkHDHubStreams, ...multiMoviesStreams];
+  let hdHub4uStreams = [];
+  if (hdHub4uResult.status === 'fulfilled' && Array.isArray(hdHub4uResult.value)) {
+    if (typeof discoverHDHub4u === 'function') {
+      hdHub4uStreams = (await mapConcurrent(hdHub4uResult.value, 4, resolveDeviceCandidate)).flat().filter(Boolean);
+    } else {
+      hdHub4uStreams = hdHub4uResult.value.map(s => ({ ...s, provider: 'HDHub4u' }));
+    }
+  }
+
+  return [...castleStreams, ...vegaStreams, ...mdStreams, ...movies4uStreams, ...fourkHDHubStreams, ...multiMoviesStreams, ...hdHub4uStreams];
 }
 
 async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
@@ -185,10 +206,10 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
       source: s.source || s.name || 'Castle'
     }));
 
-    // Candidate resolution is the dominant cost on link-heavy titles. Sixteen
+    // Candidate resolution is the dominant cost on link-heavy titles. Fourteen
     // concurrent lightweight resolver requests avoids dozens of serial network
     // batches while still bounding mobile socket usage.
-    const resolutionJob = mapConcurrent(workerData.candidates || [], 16, resolveDeviceCandidate);
+    const resolutionJob = mapConcurrent(workerData.candidates || [], 14, resolveDeviceCandidate);
     const providerFallbackJobs = [];
 
     // Some sites allow the user device but block Cloudflare Worker IPs. An

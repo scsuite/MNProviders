@@ -8,6 +8,8 @@ module.exports = Object.freeze({
   VEGAMOVIES_FALLBACK: 'https://vegamovies.catering',
   MOVIES4U_FALLBACK: 'https://new2.movies4u.clinic',
   FOURKHDHUB_FALLBACK: 'https://4khdhub.one',
+  HDHUB4U_FALLBACK: 'https://new4.hdhub4u.cl',
+  HDHUB4U_SEARCH_API: 'https://search.pingora.fyi/collections/post/documents/search',
   MULTIMOVIES_FALLBACK: 'https://multimovies.makeup',
   CASTLE_API: 'https://api.hlowb.com',
   NEXDRIVE: 'https://nexdrive.fit',
