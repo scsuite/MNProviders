@@ -2828,7 +2828,7 @@ function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
         provider: s.provider || "castle",
         source: s.source || s.name || "Castle"
       }));
-      const resolutionJob = mapConcurrent2(workerData.candidates || [], 16, resolveDeviceCandidate);
+      const resolutionJob = mapConcurrent2(workerData.candidates || [], 14, resolveDeviceCandidate);
       const providerFallbackJobs = [];
       const workerReported4KHDHub = workerData.providers && Object.prototype.hasOwnProperty.call(workerData.providers, "4khdhub");
       const worker4KCount = Number(((_b = (_a = workerData.providers) == null ? void 0 : _a["4khdhub"]) == null ? void 0 : _b.count) || 0);
