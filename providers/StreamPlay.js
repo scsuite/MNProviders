@@ -2926,6 +2926,14 @@ var mdModule = (init_moviesdrive(), __toCommonJS(moviesdrive_exports));
 var { mapConcurrent: mapConcurrent2, uniqueExactStreams: uniqueExactStreams2 } = require_streams();
 var DOMAINS4 = require_domains();
 var WORKER_BASE = DOMAINS4.WORKER;
+var CANDIDATE_TIMEOUT_MS = 1e4;
+function withTimeout(promise, milliseconds = CANDIDATE_TIMEOUT_MS) {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve([]), milliseconds);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timer));
+}
 function fetchWorkerData(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
     try {
@@ -3018,6 +3026,9 @@ function resolveDeviceCandidate(candidate) {
     }
   });
 }
+function resolveCandidateBounded(candidate) {
+  return withTimeout(resolveDeviceCandidate(candidate));
+}
 function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
@@ -3046,7 +3057,7 @@ function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
     let vegaStreams = [];
     if (vegaResult.status === "fulfilled" && Array.isArray(vegaResult.value)) {
       if (typeof discoverVega === "function") {
-        const resolved = yield mapConcurrent2(vegaResult.value, 4, resolveDeviceCandidate);
+        const resolved = yield mapConcurrent2(vegaResult.value, 4, resolveCandidateBounded);
         vegaStreams = resolved.flat().filter(Boolean);
       } else {
         vegaStreams = vegaResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "vegamovies" }));
@@ -3055,7 +3066,7 @@ function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
     let mdStreams = [];
     if (mdResult.status === "fulfilled" && Array.isArray(mdResult.value)) {
       if (typeof discoverMD === "function") {
-        const resolved = yield mapConcurrent2(mdResult.value, 4, resolveDeviceCandidate);
+        const resolved = yield mapConcurrent2(mdResult.value, 4, resolveCandidateBounded);
         mdStreams = resolved.flat().filter(Boolean);
       } else {
         mdStreams = mdResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "MoviesDrive" }));
@@ -3064,7 +3075,7 @@ function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
     let movies4uStreams = [];
     if (movies4uResult.status === "fulfilled" && Array.isArray(movies4uResult.value)) {
       if (typeof discoverMovies4u === "function") {
-        const resolved = yield mapConcurrent2(movies4uResult.value, 4, resolveDeviceCandidate);
+        const resolved = yield mapConcurrent2(movies4uResult.value, 4, resolveCandidateBounded);
         movies4uStreams = resolved.flat().filter(Boolean);
       } else {
         movies4uStreams = movies4uResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "Movies4u" }));
@@ -3073,7 +3084,7 @@ function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
     let fourkHDHubStreams = [];
     if (fourkHDHubResult.status === "fulfilled" && Array.isArray(fourkHDHubResult.value)) {
       if (typeof discover4KHDHub === "function") {
-        const resolved = yield mapConcurrent2(fourkHDHubResult.value, 4, resolveDeviceCandidate);
+        const resolved = yield mapConcurrent2(fourkHDHubResult.value, 4, resolveCandidateBounded);
         fourkHDHubStreams = resolved.flat().filter(Boolean);
       } else {
         fourkHDHubStreams = fourkHDHubResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "4KHDHub" }));
@@ -3082,7 +3093,7 @@ function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
     let multiMoviesStreams = [];
     if (multiMoviesResult.status === "fulfilled" && Array.isArray(multiMoviesResult.value)) {
       if (typeof discoverMultiMovies === "function") {
-        const resolved = yield mapConcurrent2(multiMoviesResult.value, 4, resolveDeviceCandidate);
+        const resolved = yield mapConcurrent2(multiMoviesResult.value, 4, resolveCandidateBounded);
         multiMoviesStreams = resolved.flat().filter(Boolean);
       } else {
         multiMoviesStreams = multiMoviesResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "MultiMovies" }));
@@ -3091,7 +3102,7 @@ function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
     let hdHub4uStreams = [];
     if (hdHub4uResult.status === "fulfilled" && Array.isArray(hdHub4uResult.value)) {
       if (typeof discoverHDHub4u === "function") {
-        hdHub4uStreams = (yield mapConcurrent2(hdHub4uResult.value, 4, resolveDeviceCandidate)).flat().filter(Boolean);
+        hdHub4uStreams = (yield mapConcurrent2(hdHub4uResult.value, 4, resolveCandidateBounded)).flat().filter(Boolean);
       } else {
         hdHub4uStreams = hdHub4uResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "HDHub4u" }));
       }
@@ -3113,7 +3124,7 @@ function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
         provider: s.provider || "castle",
         source: s.source || s.name || "Castle"
       }));
-      const resolutionJob = mapConcurrent2(workerData.candidates || [], 14, resolveDeviceCandidate);
+      const resolutionJob = mapConcurrent2(workerData.candidates || [], 14, resolveCandidateBounded);
       const providerFallbackJobs = [];
       const workerReported4KHDHub = workerData.providers && Object.prototype.hasOwnProperty.call(workerData.providers, "4khdhub");
       const worker4KCount = Number(((_b = (_a = workerData.providers) == null ? void 0 : _a["4khdhub"]) == null ? void 0 : _b.count) || 0);
@@ -3123,7 +3134,7 @@ function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
           try {
             providerFallbackJobs.push((() => __async(this, null, function* () {
               const localCandidates = yield discover4KHDHub(tmdbId, mediaType, season, episode);
-              const localResolved = yield mapConcurrent2(localCandidates, 4, resolveDeviceCandidate);
+              const localResolved = yield mapConcurrent2(localCandidates, 4, resolveCandidateBounded);
               return localResolved.flat().filter(Boolean);
             }))().catch(() => []));
           } catch (_) {
@@ -3145,4 +3156,4 @@ function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
     return uniqueExactStreams2(rawStreams);
   });
 }
-module.exports = { getStreams: getStreams2, WORKER_BASE, fetchWorkerData, resolveDeviceCandidate, runLocalDiscoveryFallback };
+module.exports = { getStreams: getStreams2, WORKER_BASE, fetchWorkerData, resolveDeviceCandidate, resolveCandidateBounded, runLocalDiscoveryFallback };

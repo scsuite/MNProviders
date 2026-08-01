@@ -9,6 +9,15 @@ const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 const DOMAINS = require('../config/domains');
 
 const WORKER_BASE = DOMAINS.WORKER;
+const CANDIDATE_TIMEOUT_MS = 10000;
+
+function withTimeout(promise, milliseconds = CANDIDATE_TIMEOUT_MS) {
+  let timer;
+  const timeout = new Promise(resolve => {
+    timer = setTimeout(() => resolve([]), milliseconds);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timer));
+}
 
 async function fetchWorkerData(tmdbId, mediaType, season, episode) {
   try {
@@ -101,6 +110,10 @@ async function resolveDeviceCandidate(candidate) {
   }
 }
 
+function resolveCandidateBounded(candidate) {
+  return withTimeout(resolveDeviceCandidate(candidate));
+}
+
 async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   const discoverVega = vegaModule.discoverCandidates || vegaModule.default?.discoverCandidates;
   const getVega = vegaModule.getStreams || vegaModule.default?.getStreams;
@@ -133,7 +146,7 @@ async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   let vegaStreams = [];
   if (vegaResult.status === 'fulfilled' && Array.isArray(vegaResult.value)) {
     if (typeof discoverVega === 'function') {
-      const resolved = await mapConcurrent(vegaResult.value, 4, resolveDeviceCandidate);
+      const resolved = await mapConcurrent(vegaResult.value, 4, resolveCandidateBounded);
       vegaStreams = resolved.flat().filter(Boolean);
     } else {
       vegaStreams = vegaResult.value.map(s => ({ ...s, provider: 'vegamovies' }));
@@ -143,7 +156,7 @@ async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   let mdStreams = [];
   if (mdResult.status === 'fulfilled' && Array.isArray(mdResult.value)) {
     if (typeof discoverMD === 'function') {
-      const resolved = await mapConcurrent(mdResult.value, 4, resolveDeviceCandidate);
+      const resolved = await mapConcurrent(mdResult.value, 4, resolveCandidateBounded);
       mdStreams = resolved.flat().filter(Boolean);
     } else {
       mdStreams = mdResult.value.map(s => ({ ...s, provider: 'MoviesDrive' }));
@@ -153,7 +166,7 @@ async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   let movies4uStreams = [];
   if (movies4uResult.status === 'fulfilled' && Array.isArray(movies4uResult.value)) {
     if (typeof discoverMovies4u === 'function') {
-      const resolved = await mapConcurrent(movies4uResult.value, 4, resolveDeviceCandidate);
+      const resolved = await mapConcurrent(movies4uResult.value, 4, resolveCandidateBounded);
       movies4uStreams = resolved.flat().filter(Boolean);
     } else {
       movies4uStreams = movies4uResult.value.map(s => ({ ...s, provider: 'Movies4u' }));
@@ -163,7 +176,7 @@ async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   let fourkHDHubStreams = [];
   if (fourkHDHubResult.status === 'fulfilled' && Array.isArray(fourkHDHubResult.value)) {
     if (typeof discover4KHDHub === 'function') {
-      const resolved = await mapConcurrent(fourkHDHubResult.value, 4, resolveDeviceCandidate);
+      const resolved = await mapConcurrent(fourkHDHubResult.value, 4, resolveCandidateBounded);
       fourkHDHubStreams = resolved.flat().filter(Boolean);
     } else {
       fourkHDHubStreams = fourkHDHubResult.value.map(s => ({ ...s, provider: '4KHDHub' }));
@@ -173,7 +186,7 @@ async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   let multiMoviesStreams = [];
   if (multiMoviesResult.status === 'fulfilled' && Array.isArray(multiMoviesResult.value)) {
     if (typeof discoverMultiMovies === 'function') {
-      const resolved = await mapConcurrent(multiMoviesResult.value, 4, resolveDeviceCandidate);
+      const resolved = await mapConcurrent(multiMoviesResult.value, 4, resolveCandidateBounded);
       multiMoviesStreams = resolved.flat().filter(Boolean);
     } else {
       multiMoviesStreams = multiMoviesResult.value.map(s => ({ ...s, provider: 'MultiMovies' }));
@@ -183,7 +196,7 @@ async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   let hdHub4uStreams = [];
   if (hdHub4uResult.status === 'fulfilled' && Array.isArray(hdHub4uResult.value)) {
     if (typeof discoverHDHub4u === 'function') {
-      hdHub4uStreams = (await mapConcurrent(hdHub4uResult.value, 4, resolveDeviceCandidate)).flat().filter(Boolean);
+      hdHub4uStreams = (await mapConcurrent(hdHub4uResult.value, 4, resolveCandidateBounded)).flat().filter(Boolean);
     } else {
       hdHub4uStreams = hdHub4uResult.value.map(s => ({ ...s, provider: 'HDHub4u' }));
     }
@@ -209,7 +222,7 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
     // Candidate resolution is the dominant cost on link-heavy titles. Fourteen
     // concurrent lightweight resolver requests avoids dozens of serial network
     // batches while still bounding mobile socket usage.
-    const resolutionJob = mapConcurrent(workerData.candidates || [], 14, resolveDeviceCandidate);
+    const resolutionJob = mapConcurrent(workerData.candidates || [], 14, resolveCandidateBounded);
     const providerFallbackJobs = [];
 
     // Some sites allow the user device but block Cloudflare Worker IPs. An
@@ -222,7 +235,7 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
         try {
           providerFallbackJobs.push((async () => {
             const localCandidates = await discover4KHDHub(tmdbId, mediaType, season, episode);
-            const localResolved = await mapConcurrent(localCandidates, 4, resolveDeviceCandidate);
+            const localResolved = await mapConcurrent(localCandidates, 4, resolveCandidateBounded);
             return localResolved.flat().filter(Boolean);
           })().catch(() => []));
         } catch (_) {}
@@ -247,4 +260,4 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
   return uniqueExactStreams(rawStreams);
 }
 
-module.exports = { getStreams, WORKER_BASE, fetchWorkerData, resolveDeviceCandidate, runLocalDiscoveryFallback };
+module.exports = { getStreams, WORKER_BASE, fetchWorkerData, resolveDeviceCandidate, resolveCandidateBounded, runLocalDiscoveryFallback };
