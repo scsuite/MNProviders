@@ -8,7 +8,7 @@ import castleModule from '../../src/providers/castle.js';
 import uhdMoviesModule from '../../src/providers/uhdmovies.js';
 import domainConfig from '../../src/config/domains.js';
 
-const VERSION = '1.0.19';
+const VERSION = '1.0.18';
 const DEFAULT_TIMEOUT_MS = 8000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
@@ -81,7 +81,7 @@ async function runWorkerDiscovery(params) {
     : Promise.resolve({ provider: 'castle', data: [], error: null });
 
   const mdJob = params.providers.includes('moviesdrive')
-    ? deadline(moviesDriveModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'moviesdrive')
+    ? deadline(moviesDriveModule.getStreamsLocal(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'moviesdrive')
     : Promise.resolve({ provider: 'moviesdrive', data: [], error: null });
   const vegaJob = params.providers.includes('vegamovies')
     ? deadline(vegaMoviesModule.getStreamsLocal(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'vegamovies')
@@ -107,13 +107,14 @@ async function runWorkerDiscovery(params) {
 
   const directStreams = [
     ...castleRes.data.map(stream => ({ ...stream, provider: 'castle', resolverType: 'direct' })),
+    ...mdRes.data.map(stream => ({ ...stream, provider: 'MoviesDrive', resolverType: 'direct' })),
     ...vegaRes.data.map(stream => ({ ...stream, provider: 'VegaMovies', resolverType: 'direct' })),
     ...fourkHDHubRes.data.map(stream => ({ ...stream, provider: '4KHDHub', resolverType: 'direct' })),
     ...hdHub4uRes.data.map(stream => ({ ...stream, provider: 'HDHub4u', resolverType: 'direct' })),
     ...uhdMoviesRes.data.map(stream => ({ ...stream, provider: 'UHDMovies', resolverType: 'direct' }))
   ];
 
-  const candidates = [...mdRes.data, ...movies4uRes.data, ...multiMoviesRes.data];
+  const candidates = [...movies4uRes.data, ...multiMoviesRes.data];
   const providerResult = (result) => ({
     count: result.data.length,
     error: result.error,
@@ -123,7 +124,7 @@ async function runWorkerDiscovery(params) {
   return {
     directStreams,
     candidates,
-    deviceProviders: params.providers.filter(provider => !['castle', 'vegamovies', '4khdhub', 'hdhub4u', 'uhdmovies'].includes(provider)),
+    deviceProviders: params.providers.filter(provider => !['castle', 'moviesdrive', 'vegamovies', '4khdhub', 'hdhub4u', 'uhdmovies'].includes(provider)),
     providers: {
       castle: providerResult(castleRes),
       moviesdrive: providerResult(mdRes),
@@ -244,7 +245,7 @@ async function cachedResponse(request, env, ctx, params) {
     providers: result.providers
   };
   const complete = params.providers.every(provider => result.providers[provider]?.status === 'success');
-  const cacheSeconds = params.providers.some(provider => ['vegamovies', '4khdhub', 'hdhub4u', 'uhdmovies'].includes(provider))
+  const cacheSeconds = params.providers.some(provider => ['moviesdrive', 'vegamovies', '4khdhub', 'hdhub4u', 'uhdmovies'].includes(provider))
     ? DIRECT_RESOLUTION_CACHE_SECONDS
     : complete ? CACHE_SECONDS : PARTIAL_CACHE_SECONDS;
   const response = json(payload, 200, {
