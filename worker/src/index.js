@@ -7,7 +7,7 @@ import hdHub4uModule from '../../src/providers/hdhub4u.js';
 import castleModule from '../../src/providers/castle.js';
 import domainConfig from '../../src/config/domains.js';
 
-const VERSION = '1.0.13';
+const VERSION = '1.0.14';
 const DEFAULT_TIMEOUT_MS = 8000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
@@ -15,8 +15,31 @@ const PARTIAL_CACHE_SECONDS = 300;
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Resolver-Key',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS'
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
 };
+
+const HDHUB4U_CANDIDATE_HOSTS = /(^|\.)(?:hubdrive\.tips|hubcdn\.sbs|gadgetsweb\.xyz|greenmountmotors\.com|hubstream\.art)$/i;
+
+function validHdHub4uCandidate(candidate) {
+  try {
+    const parsed = new URL(candidate?.url);
+    return candidate?.provider === 'HDHub4u' && parsed.protocol === 'https:' &&
+      HDHUB4U_CANDIDATE_HOSTS.test(parsed.hostname) &&
+      ['hubdrive', 'hubcdn', 'protector', 'watch'].includes(candidate.resolverType);
+  } catch (_) { return false; }
+}
+
+async function resolveHdHub4u(request) {
+  let payload;
+  try { payload = await request.json(); } catch (_) { return json({ ok: false, error: 'Invalid JSON body' }, 400); }
+  const candidates = Array.isArray(payload?.candidates) ? payload.candidates.slice(0, 20).filter(validHdHub4uCandidate) : [];
+  if (!candidates.length) return json({ ok: false, error: 'No valid HDHub4u candidates' }, 400);
+  const started = Date.now();
+  const jobs = candidates.map(candidate => deadline(hdHub4uModule.resolveCandidate(candidate), 25000, 'hdhub4u'));
+  const results = await Promise.all(jobs);
+  const streams = results.flatMap(result => result.data || []);
+  return json({ ok: true, version: VERSION, elapsedMs: Date.now() - started, count: streams.length, streams }, 200, { 'Cache-Control': 'no-store' });
+}
 
 function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
@@ -246,9 +269,14 @@ async function cachedResponse(request, env, ctx, params) {
 
 export async function handleRequest(request, env = {}, ctx = {}) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
-  if (request.method !== 'GET') return json({ ok: false, error: 'GET only' }, 405);
 
   const url = new URL(request.url);
+  if (url.pathname === '/resolve/hdhub4u') {
+    if (request.method !== 'POST') return json({ ok: false, error: 'POST only' }, 405);
+    if (env.RESOLVER_KEY && request.headers.get('X-Resolver-Key') !== env.RESOLVER_KEY) return json({ ok: false, error: 'Unauthorized' }, 401);
+    return resolveHdHub4u(request);
+  }
+  if (request.method !== 'GET') return json({ ok: false, error: 'GET only' }, 405);
   if (url.pathname === '/' || url.pathname === '/health') {
     return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'hdhub4u', 'castle'] });
   }

@@ -2996,6 +2996,21 @@ var require_hdhub4u = __commonJS({
     function getStreams3(tmdbId, mediaType, season = 1, episode = 1) {
       return __async(this, null, function* () {
         const candidates = yield discoverCandidates2(tmdbId, mediaType, season, episode);
+        if (!candidates.length)
+          return [];
+        try {
+          const response = yield fetch(`${DOMAINS5.WORKER}/resolve/hdhub4u`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ candidates })
+          });
+          if (response.ok) {
+            const payload = yield response.json();
+            if (Array.isArray(payload == null ? void 0 : payload.streams) && payload.streams.length)
+              return uniqueExactStreams3(payload.streams);
+          }
+        } catch (_) {
+        }
         return uniqueExactStreams3((yield mapConcurrent3(candidates, 4, resolveCandidate2)).flat().filter(Boolean));
       });
     }

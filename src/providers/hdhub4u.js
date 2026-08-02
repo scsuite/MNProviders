@@ -245,6 +245,18 @@ async function resolveCandidate(item) {
 }
 async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
   const candidates = await discoverCandidates(tmdbId, mediaType, season, episode);
+  if (!candidates.length) return [];
+  try {
+    const response = await fetch(`${DOMAINS.WORKER}/resolve/hdhub4u`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ candidates })
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      if (Array.isArray(payload?.streams) && payload.streams.length) return uniqueExactStreams(payload.streams);
+    }
+  } catch (_) {}
   return uniqueExactStreams((await mapConcurrent(candidates, 4, resolveCandidate)).flat().filter(Boolean));
 }
 
