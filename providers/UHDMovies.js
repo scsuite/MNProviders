@@ -903,18 +903,25 @@ function resolveResumeRoute($file, filePage, fileUrl, info, item) {
 }
 function resolveInstantRoute($file, filePage, fileUrl, info, item) {
   return __async(this, null, function* () {
+    var _a, _b, _c, _d, _e, _f;
     const instantPath = findLinkByText($file, /^Instant Download$/i);
     const instantUrl = absolute(instantPath, filePage.response.url || fileUrl);
     if (!instantUrl)
       return null;
-    const response = yield fetch(instantUrl, {
+    const requestOptions = {
       method: "GET",
-      redirect: "manual",
       headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: filePage.response.url || fileUrl })
-    });
-    if (response.status < 300 || response.status >= 400)
-      return null;
-    const directUrl = directUrlFromRedirect(response.headers.get("location"), instantUrl);
+    };
+    const response = yield fetch(instantUrl, __spreadProps(__spreadValues({}, requestOptions), { redirect: "manual" }));
+    let directUrl = directUrlFromRedirect((_b = (_a = response.headers) == null ? void 0 : _a.get) == null ? void 0 : _b.call(_a, "location"), instantUrl) || directUrlFromRedirect(response.url, instantUrl);
+    if (!directUrl) {
+      const followed = yield fetch(instantUrl, __spreadProps(__spreadValues({}, requestOptions), { redirect: "follow" }));
+      directUrl = directUrlFromRedirect(followed.url, instantUrl) || directUrlFromRedirect((_d = (_c = followed.headers) == null ? void 0 : _c.get) == null ? void 0 : _d.call(_c, "location"), instantUrl);
+      try {
+        yield (_f = (_e = followed.body) == null ? void 0 : _e.cancel) == null ? void 0 : _f.call(_e);
+      } catch (_) {
+      }
+    }
     if (!directUrl)
       return null;
     return buildStream(info, item, directUrl, "DriveSeed Instant", false);

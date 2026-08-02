@@ -375,13 +375,24 @@ async function resolveInstantRoute($file, filePage, fileUrl, info, item) {
   const instantUrl = absolute(instantPath, filePage.response.url || fileUrl);
   if (!instantUrl) return null;
 
-  const response = await fetch(instantUrl, {
+  const requestOptions = {
     method: 'GET',
-    redirect: 'manual',
     headers: { ...HEADERS, Referer: filePage.response.url || fileUrl }
-  });
-  if (response.status < 300 || response.status >= 400) return null;
-  const directUrl = directUrlFromRedirect(response.headers.get('location'), instantUrl);
+  };
+  const response = await fetch(instantUrl, { ...requestOptions, redirect: 'manual' });
+  let directUrl = directUrlFromRedirect(response.headers?.get?.('location'), instantUrl) ||
+    directUrlFromRedirect(response.url, instantUrl);
+
+  // Android fetch bridges do not all expose manual redirects identically:
+  // some report status 0/200, hide Location, or only expose the followed URL.
+  // Retry with normal redirect handling only when the manual response contains
+  // no usable target, then cancel a possible media body after reading headers.
+  if (!directUrl) {
+    const followed = await fetch(instantUrl, { ...requestOptions, redirect: 'follow' });
+    directUrl = directUrlFromRedirect(followed.url, instantUrl) ||
+      directUrlFromRedirect(followed.headers?.get?.('location'), instantUrl);
+    try { await followed.body?.cancel?.(); } catch (_) {}
+  }
   if (!directUrl) return null;
 
   return buildStream(info, item, directUrl, 'DriveSeed Instant', false);
