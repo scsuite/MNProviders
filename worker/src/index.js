@@ -3,11 +3,10 @@ import vegaMoviesModule from '../../src/providers/vegamovies.js';
 import movies4uModule from '../../src/providers/movies4u.js';
 import fourkHDHubModule from '../../src/providers/fourkHDhub.js';
 import multiMoviesModule from '../../src/providers/multimovies.js';
-import hdHub4uModule from '../../src/providers/hdhub4u.js';
 import castleModule from '../../src/providers/castle.js';
 import domainConfig from '../../src/config/domains.js';
 
-const VERSION = '1.0.14';
+const VERSION = '1.0.15';
 const DEFAULT_TIMEOUT_MS = 8000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
@@ -15,31 +14,8 @@ const PARTIAL_CACHE_SECONDS = 300;
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, X-Resolver-Key',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+  'Access-Control-Allow-Methods': 'GET, OPTIONS'
 };
-
-const HDHUB4U_CANDIDATE_HOSTS = /(^|\.)(?:hubdrive\.tips|hubcdn\.sbs|gadgetsweb\.xyz|greenmountmotors\.com|hubstream\.art)$/i;
-
-function validHdHub4uCandidate(candidate) {
-  try {
-    const parsed = new URL(candidate?.url);
-    return candidate?.provider === 'HDHub4u' && parsed.protocol === 'https:' &&
-      HDHUB4U_CANDIDATE_HOSTS.test(parsed.hostname) &&
-      ['hubdrive', 'hubcdn', 'protector', 'watch'].includes(candidate.resolverType);
-  } catch (_) { return false; }
-}
-
-async function resolveHdHub4u(request) {
-  let payload;
-  try { payload = await request.json(); } catch (_) { return json({ ok: false, error: 'Invalid JSON body' }, 400); }
-  const candidates = Array.isArray(payload?.candidates) ? payload.candidates.slice(0, 20).filter(validHdHub4uCandidate) : [];
-  if (!candidates.length) return json({ ok: false, error: 'No valid HDHub4u candidates' }, 400);
-  const started = Date.now();
-  const jobs = candidates.map(candidate => deadline(hdHub4uModule.resolveCandidate(candidate), 25000, 'hdhub4u'));
-  const results = await Promise.all(jobs);
-  const streams = results.flatMap(result => result.data || []);
-  return json({ ok: true, version: VERSION, elapsedMs: Date.now() - started, count: streams.length, streams }, 200, { 'Cache-Control': 'no-store' });
-}
 
 function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
@@ -116,11 +92,8 @@ async function runWorkerDiscovery(params) {
   const multiMoviesJob = params.providers.includes('multimovies')
     ? deadline(multiMoviesModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'multimovies')
     : Promise.resolve({ provider: 'multimovies', data: [], error: null });
-  const hdHub4uJob = params.providers.includes('hdhub4u')
-    ? deadline(hdHub4uModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'hdhub4u')
-    : Promise.resolve({ provider: 'hdhub4u', data: [], error: null });
-  const [castleRes, mdRes, vegaRes, movies4uRes, fourkHDHubRes, multiMoviesRes, hdHub4uRes] = await Promise.all([
-    castleJob, mdJob, vegaJob, movies4uJob, fourkHDHubJob, multiMoviesJob, hdHub4uJob
+  const [castleRes, mdRes, vegaRes, movies4uRes, fourkHDHubRes, multiMoviesRes] = await Promise.all([
+    castleJob, mdJob, vegaJob, movies4uJob, fourkHDHubJob, multiMoviesJob
   ]);
 
   const directStreams = castleRes.data.map(stream => ({
@@ -129,7 +102,7 @@ async function runWorkerDiscovery(params) {
     resolverType: 'direct'
   }));
 
-  const candidates = [...mdRes.data, ...vegaRes.data, ...movies4uRes.data, ...fourkHDHubRes.data, ...multiMoviesRes.data, ...hdHub4uRes.data];
+  const candidates = [...mdRes.data, ...vegaRes.data, ...movies4uRes.data, ...fourkHDHubRes.data, ...multiMoviesRes.data];
   const providerResult = (result) => ({
     count: result.data.length,
     error: result.error,
@@ -146,8 +119,7 @@ async function runWorkerDiscovery(params) {
       vegamovies: providerResult(vegaRes),
       movies4u: providerResult(movies4uRes),
       '4khdhub': providerResult(fourkHDHubRes),
-      multimovies: providerResult(multiMoviesRes),
-      hdhub4u: providerResult(hdHub4uRes)
+      multimovies: providerResult(multiMoviesRes)
     }
   };
 }
@@ -217,8 +189,8 @@ function parseRequest(url, env) {
   const type = normalizeType(url.searchParams.get('type'));
   const season = Number(url.searchParams.get('season') || 1);
   const episode = Number(url.searchParams.get('episode') || 1);
-  const requested = String(url.searchParams.get('providers') || 'moviesdrive,vegamovies,movies4u,4khdhub,multimovies,hdhub4u,castle')
-    .toLowerCase().split(',').map(value => value.trim()).filter(value => ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'hdhub4u', 'castle'].includes(value));
+  const requested = String(url.searchParams.get('providers') || 'moviesdrive,vegamovies,movies4u,4khdhub,multimovies,castle')
+    .toLowerCase().split(',').map(value => value.trim()).filter(value => ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'castle'].includes(value));
   const configuredTimeout = Number(env?.PROVIDER_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
   return {
     tmdbId,
@@ -271,14 +243,9 @@ export async function handleRequest(request, env = {}, ctx = {}) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
 
   const url = new URL(request.url);
-  if (url.pathname === '/resolve/hdhub4u') {
-    if (request.method !== 'POST') return json({ ok: false, error: 'POST only' }, 405);
-    if (env.RESOLVER_KEY && request.headers.get('X-Resolver-Key') !== env.RESOLVER_KEY) return json({ ok: false, error: 'Unauthorized' }, 401);
-    return resolveHdHub4u(request);
-  }
   if (request.method !== 'GET') return json({ ok: false, error: 'GET only' }, 405);
   if (url.pathname === '/' || url.pathname === '/health') {
-    return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'hdhub4u', 'castle'] });
+    return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'castle'] });
   }
   if (url.pathname === '/diagnostics') {
     return json({ ok: true, version: VERSION, probes: await diagnostics() }, 200, { 'Cache-Control': 'no-store' });
