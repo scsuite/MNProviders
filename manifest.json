@@ -1,17 +1,17 @@
 {
   "name": "MNProviders MovieBox Experimental",
-  "version": "1.0.3",
-  "description": "Isolated experimental MovieBox provider using device-side signed API requests",
+  "version": "1.0.4",
+  "description": "Isolated MovieBox runtime compatibility test",
   "scrapers": [
     {
       "id": "MovieBox",
       "name": "MovieBox",
-      "description": "Experimental multilingual MovieBox movies and TV provider; Android device-side only",
-      "version": "1.0.3",
+      "description": "Temporary minimal runtime test before enabling signed MovieBox API requests",
+      "version": "1.0.4",
       "author": "Phisher98; Nuvio compatibility port by scsuite",
       "supportedTypes": ["movie", "tv"],
-      "filename": "providers/MovieBox.js?v=103",
-      "source": "src/providers/moviebox.js",
+      "filename": "providers/MovieBoxSmoke.js?v=104",
+      "source": "src/providers/moviebox-smoke.js",
       "enabled": true,
       "formats": ["hls", "mp4", "mkv", "dash"],
       "logo": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/moviebox.png",
