@@ -206,7 +206,7 @@ export async function resolveCandidate(candidate) {
   }
 }
 
-export async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+export async function getStreamsLocal(tmdbId, mediaType, season = 1, episode = 1) {
   try {
     const candidates = await discoverCandidates(tmdbId, mediaType, season, episode);
     const resolvedResults = await mapConcurrent(candidates, 4, resolveCandidate);
@@ -218,4 +218,39 @@ export async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
   }
 }
 
-export default { discoverCandidates, resolveCandidate, getStreams };
+export async function fetchWorkerStreams(tmdbId, mediaType, season = 1, episode = 1) {
+  try {
+    const type = normalizeType(mediaType);
+    const query = new URLSearchParams({
+      tmdbId: String(tmdbId).replace(/^tmdb:/i, ''),
+      type,
+      season: String(season || 1),
+      episode: String(episode || 1),
+      providers: 'moviesdrive',
+      timeout: '40000'
+    });
+    const response = await fetch(`${DOMAINS.WORKER}/streams?${query.toString()}`, {
+      headers: { Accept: 'application/json' }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const state = data?.providers?.moviesdrive;
+    if (!data?.ok || state?.status !== 'success') return null;
+    const streams = (Array.isArray(data.directStreams) ? data.directStreams : [])
+      .filter(stream => String(stream?.provider || '').toLowerCase() === 'moviesdrive');
+    return streams.length ? streams : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+export async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+  const type = normalizeType(mediaType);
+  if (!tmdbId || (type === 'tv' && (!season || !episode))) return [];
+  const workerStreams = await fetchWorkerStreams(tmdbId, type, season, episode);
+  return workerStreams
+    ? uniqueExactStreams(workerStreams)
+    : getStreamsLocal(tmdbId, type, season, episode);
+}
+
+export default { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };

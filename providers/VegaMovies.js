@@ -70,6 +70,8 @@ var require_domains = __commonJS({
       HDHUB4U_SEARCH_API: "https://search.pingora.fyi/collections/post/documents/search",
       MULTIMOVIES_FALLBACK: "https://multimovies.makeup",
       CASTLE_API: "https://api.hlowb.com",
+      MOVIEBLAST_API: "https://app.cloud-mb.xyz",
+      UHDMOVIES_FALLBACK: "https://uhdmovies.casa",
       NEXDRIVE: "https://nexdrive.fit",
       HUBCLOUD: "https://hubcloud.cx",
       VCLOUD: "https://vcloud.zip",
@@ -901,8 +903,8 @@ function resolveCandidate(candidate) {
     }
   });
 }
-function getStreams(_0, _1, _2, _3) {
-  return __async(this, arguments, function* (tmdbId, mediaType, season, episode, options = {}) {
+function getStreamsLocal(tmdbId, mediaType, season, episode) {
+  return __async(this, null, function* () {
     try {
       const candidates = yield discoverCandidates(tmdbId, mediaType, season, episode);
       const resolvedResults = yield mapConcurrent(candidates, 4, resolveCandidate);
@@ -914,4 +916,41 @@ function getStreams(_0, _1, _2, _3) {
     }
   });
 }
-module.exports = { discoverCandidates, resolveCandidate, getStreams };
+function fetchWorkerStreams(tmdbId, mediaType, season, episode) {
+  return __async(this, null, function* () {
+    var _a;
+    try {
+      const query = new URLSearchParams({
+        tmdbId: String(tmdbId).replace(/^tmdb:/i, ""),
+        type: mediaType,
+        season: String(season || 1),
+        episode: String(episode || 1),
+        providers: "vegamovies",
+        timeout: "30000"
+      });
+      const response = yield fetch(`${DOMAINS.WORKER}/streams?${query.toString()}`, {
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok)
+        return null;
+      const data = yield response.json();
+      const state = (_a = data == null ? void 0 : data.providers) == null ? void 0 : _a.vegamovies;
+      if (!(data == null ? void 0 : data.ok) || (state == null ? void 0 : state.status) !== "success")
+        return null;
+      const streams = (Array.isArray(data.directStreams) ? data.directStreams : []).filter((stream) => String((stream == null ? void 0 : stream.provider) || "").toLowerCase() === "vegamovies");
+      return streams.length ? streams : null;
+    } catch (_) {
+      return null;
+    }
+  });
+}
+function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+  return __async(this, null, function* () {
+    const type = /^(tv|series|show)$/i.test(String(mediaType || "")) ? "tv" : "movie";
+    if (!tmdbId || type === "tv" && (!season || !episode))
+      return [];
+    const workerStreams = yield fetchWorkerStreams(tmdbId, type, season, episode);
+    return workerStreams ? uniqueExactStreams(workerStreams) : getStreamsLocal(tmdbId, type, season, episode);
+  });
+}
+module.exports = { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };

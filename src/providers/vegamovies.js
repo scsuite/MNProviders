@@ -231,7 +231,7 @@ async function resolveCandidate(candidate) {
   }
 }
 
-async function getStreams(tmdbId, mediaType, season, episode, options = {}) {
+async function getStreamsLocal(tmdbId, mediaType, season, episode) {
   try {
     const candidates = await discoverCandidates(tmdbId, mediaType, season, episode);
     const resolvedResults = await mapConcurrent(candidates, 4, resolveCandidate);
@@ -243,4 +243,36 @@ async function getStreams(tmdbId, mediaType, season, episode, options = {}) {
   }
 }
 
-module.exports = { discoverCandidates, resolveCandidate, getStreams };
+async function fetchWorkerStreams(tmdbId, mediaType, season, episode) {
+  try {
+    const query = new URLSearchParams({
+      tmdbId: String(tmdbId).replace(/^tmdb:/i, ''),
+      type: mediaType,
+      season: String(season || 1),
+      episode: String(episode || 1),
+      providers: 'vegamovies',
+      timeout: '30000'
+    });
+    const response = await fetch(`${DOMAINS.WORKER}/streams?${query.toString()}`, {
+      headers: { Accept: 'application/json' }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const state = data?.providers?.vegamovies;
+    if (!data?.ok || state?.status !== 'success') return null;
+    const streams = (Array.isArray(data.directStreams) ? data.directStreams : [])
+      .filter(stream => String(stream?.provider || '').toLowerCase() === 'vegamovies');
+    return streams.length ? streams : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+  const type = /^(tv|series|show)$/i.test(String(mediaType || '')) ? 'tv' : 'movie';
+  if (!tmdbId || (type === 'tv' && (!season || !episode))) return [];
+  const workerStreams = await fetchWorkerStreams(tmdbId, type, season, episode);
+  return workerStreams ? uniqueExactStreams(workerStreams) : getStreamsLocal(tmdbId, type, season, episode);
+}
+
+module.exports = { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };

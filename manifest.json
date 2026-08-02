@@ -1,7 +1,7 @@
 {
   "name": "MNProviders",
-  "version": "1.0.60",
-  "description": "Independent Nuvio providers with device-side discovery and extraction",
+  "version": "1.0.61",
+  "description": "Independent Nuvio providers with Worker-first resolution and safe device fallback",
   "scrapers": [
     {
       "id": "StreamPlay",
@@ -32,13 +32,13 @@
       "id": "MoviesDrive",
       "name": "MoviesDrive",
       "description": "Independent MoviesDrive provider with HubCloud and Phisher-style GDFlix extraction",
-      "version": "2.0.15",
+      "version": "2.1.0",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/MoviesDrive.js?v=215",
+      "filename": "providers/MoviesDrive.js?v=210",
       "source": "src/moviesdrive/index.js",
       "enabled": true,
       "formats": [
@@ -56,10 +56,10 @@
       "id": "VegaMovies",
       "name": "VegaMovies",
       "description": "Independent VegaMovies provider with VCloud and FastDL extraction",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": ["movie", "tv"],
-      "filename": "providers/VegaMovies.js?v=100",
+      "filename": "providers/VegaMovies.js?v=110",
       "source": "src/providers/vegamovies.js",
       "enabled": true,
       "formats": ["mkv", "mp4"],

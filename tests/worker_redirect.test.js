@@ -2,6 +2,8 @@ const assert = require('assert');
 
 (async () => {
   const health = await handleHealth();
+  assert(health.providers.includes('moviesdrive'), 'Worker health must advertise MoviesDrive support');
+  assert(health.providers.includes('vegamovies'), 'Worker health must advertise VegaMovies support');
   assert(health.providers.includes('uhdmovies'), 'Worker health must advertise UHDMovies support');
   assert(health.providers.includes('4khdhub'), 'Worker health must advertise 4KHDHub support');
   assert(health.providers.includes('hdhub4u'), 'Worker health must advertise HDHub4u support');

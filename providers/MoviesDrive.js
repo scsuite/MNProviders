@@ -94,6 +94,8 @@ var require_domains = __commonJS({
       HDHUB4U_SEARCH_API: "https://search.pingora.fyi/collections/post/documents/search",
       MULTIMOVIES_FALLBACK: "https://multimovies.makeup",
       CASTLE_API: "https://api.hlowb.com",
+      MOVIEBLAST_API: "https://app.cloud-mb.xyz",
+      UHDMOVIES_FALLBACK: "https://uhdmovies.casa",
       NEXDRIVE: "https://nexdrive.fit",
       HUBCLOUD: "https://hubcloud.cx",
       VCLOUD: "https://vcloud.zip",
@@ -551,7 +553,9 @@ var moviesdrive_exports = {};
 __export(moviesdrive_exports, {
   default: () => moviesdrive_default,
   discoverCandidates: () => discoverCandidates,
+  fetchWorkerStreams: () => fetchWorkerStreams,
   getStreams: () => getStreams,
+  getStreamsLocal: () => getStreamsLocal,
   resolveCandidate: () => resolveCandidate
 });
 module.exports = __toCommonJS(moviesdrive_exports);
@@ -1122,7 +1126,7 @@ function resolveCandidate(candidate) {
     }
   });
 }
-function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+function getStreamsLocal(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
     try {
       const candidates = yield discoverCandidates(tmdbId, mediaType, season, episode);
@@ -1135,4 +1139,42 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
     }
   });
 }
-var moviesdrive_default = { discoverCandidates, resolveCandidate, getStreams };
+function fetchWorkerStreams(tmdbId, mediaType, season = 1, episode = 1) {
+  return __async(this, null, function* () {
+    var _a;
+    try {
+      const type = normalizeType(mediaType);
+      const query = new URLSearchParams({
+        tmdbId: String(tmdbId).replace(/^tmdb:/i, ""),
+        type,
+        season: String(season || 1),
+        episode: String(episode || 1),
+        providers: "moviesdrive",
+        timeout: "40000"
+      });
+      const response = yield fetch(`${import_domains3.default.WORKER}/streams?${query.toString()}`, {
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok)
+        return null;
+      const data = yield response.json();
+      const state = (_a = data == null ? void 0 : data.providers) == null ? void 0 : _a.moviesdrive;
+      if (!(data == null ? void 0 : data.ok) || (state == null ? void 0 : state.status) !== "success")
+        return null;
+      const streams = (Array.isArray(data.directStreams) ? data.directStreams : []).filter((stream) => String((stream == null ? void 0 : stream.provider) || "").toLowerCase() === "moviesdrive");
+      return streams.length ? streams : null;
+    } catch (_) {
+      return null;
+    }
+  });
+}
+function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+  return __async(this, null, function* () {
+    const type = normalizeType(mediaType);
+    if (!tmdbId || type === "tv" && (!season || !episode))
+      return [];
+    const workerStreams = yield fetchWorkerStreams(tmdbId, type, season, episode);
+    return workerStreams ? (0, import_streams.uniqueExactStreams)(workerStreams) : getStreamsLocal(tmdbId, type, season, episode);
+  });
+}
+var moviesdrive_default = { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };
