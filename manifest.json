@@ -1,16 +1,16 @@
 {
   "name": "MNProviders MovieBox Experimental",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Isolated experimental MovieBox provider using device-side signed API requests",
   "scrapers": [
     {
       "id": "MovieBox",
       "name": "MovieBox",
       "description": "Experimental multilingual MovieBox movies and TV provider; Android device-side only",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "author": "Phisher98; Nuvio compatibility port by scsuite",
       "supportedTypes": ["movie", "tv"],
-      "filename": "providers/MovieBox.js?v=102",
+      "filename": "providers/MovieBox.js?v=103",
       "source": "src/providers/moviebox.js",
       "enabled": true,
       "formats": ["hls", "mp4", "mkv", "dash"],

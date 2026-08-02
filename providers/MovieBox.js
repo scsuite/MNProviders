@@ -841,10 +841,11 @@ function diagnosticStream(mirror, message, metadata, mediaType, season, episode,
     name: `MovieBox DIAG | ${host} | ${detail}`,
     title: `Diagnostic only: ${metadata.title}${mediaType === "tv" ? ` S${season}E${episode}` : ""}`,
     url: `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4?moviebox_diag=${index}`,
-    quality: "Unknown",
+    quality: "1080p",
+    size: "Diagnostic",
     source: `DIAG ${host}: ${detail}`,
     provider: "MovieBox",
-    headers: {},
+    headers: { "User-Agent": MAIN_UA },
     subtitles: [],
     seekable: true
   };
@@ -854,9 +855,31 @@ function getStreams(tmdbId, mediaType = "movie", season = 1, episode = 1) {
     const type = mediaType === "tv" ? "tv" : "movie";
     if (!tmdbId || type === "tv" && (!season || !episode))
       return [];
-    const metadata = yield sharedMetadata.getMetadata(tmdbId, type);
-    if (!(metadata == null ? void 0 : metadata.title))
-      return [];
+    let metadata;
+    try {
+      metadata = yield sharedMetadata.getMetadata(tmdbId, type);
+    } catch (error) {
+      return [diagnosticStream(
+        "https://metadata.moviebox.invalid",
+        `metadata failure: ${(error == null ? void 0 : error.message) || error}`,
+        { title: `TMDB ${tmdbId}` },
+        type,
+        season,
+        episode,
+        90
+      )];
+    }
+    if (!(metadata == null ? void 0 : metadata.title)) {
+      return [diagnosticStream(
+        "https://metadata.moviebox.invalid",
+        "metadata title missing",
+        { title: `TMDB ${tmdbId}` },
+        type,
+        season,
+        episode,
+        91
+      )];
+    }
     const diagnostics = [];
     for (const [index, mirror] of MIRRORS.entries()) {
       try {
