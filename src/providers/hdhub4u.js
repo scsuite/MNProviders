@@ -53,15 +53,14 @@ async function search(info, base, mediaType, season) {
       const $ = cheerio.load(await response.text());
       const target = normalized(info.title);
       const seasonPattern = new RegExp(`(?:season[ ._/-]*|\\bs)0?${season}(?:\\D|$)`, 'i');
-      const results = $('a[href]').map((_, anchor) => {
+      const results = [];
+      $('a[href]').each((_, anchor) => {
         const node = $(anchor);
         const title = clean(node.text() || node.attr('title'));
         const url = absolute(node.attr('href'), response.url || base);
-        return { title, url };
-      }).get().filter(item => {
-        if (!item.title || !item.url || !item.url.startsWith(`${base}/`)) return false;
-        const name = normalized(item.title);
-        return name === target || name.startsWith(`${target} `);
+        if (!title || !url || url.indexOf(`${base}/`) !== 0) return;
+        const name = normalized(title);
+        if (name === target || name.indexOf(`${target} `) === 0) results.push({ title, url });
       });
       const selected = results.find(item => mediaType === 'tv' && seasonPattern.test(`${item.title} ${item.url}`))
         || results.find(item => info.year && item.title.includes(String(info.year)))
@@ -149,18 +148,23 @@ function distinct(items) {
 }
 
 async function discoverCandidates(tmdbId, mediaType, season = 1, episode = 1) {
+  let stage = 'initialization';
   try {
     const type = mediaType === 'tv' ? 'tv' : 'movie';
+    stage = 'domain and metadata';
     const [base, info] = await Promise.all([getBaseUrl(), metadata(tmdbId, type)]);
     if (!info?.title) return [];
+    stage = 'same-domain search';
     const pageUrl = await search(info, base, type, Number(season) || 1);
     if (!pageUrl) return [];
+    stage = 'detail page fetch';
     const response = await request(pageUrl, base);
     if (!response.ok) return [];
+    stage = 'detail page parsing';
     const $ = cheerio.load(await response.text());
     return distinct(type === 'tv' ? parseEpisode($, pageUrl, episode) : parseMovie($, pageUrl));
   } catch (error) {
-    console.log(`[HDHub4u Candidates] ${error?.message || error}`);
+    console.log(`[HDHub4u Candidates:${stage}] ${error?.message || error}`);
     return [];
   }
 }

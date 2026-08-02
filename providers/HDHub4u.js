@@ -1230,16 +1230,16 @@ function search2(info, base, mediaType, season) {
         const $ = cheerio3.load(yield response2.text());
         const target = normalized(info.title);
         const seasonPattern2 = new RegExp(`(?:season[ ._/-]*|\\bs)0?${season}(?:\\D|$)`, "i");
-        const results = $("a[href]").map((_, anchor) => {
+        const results = [];
+        $("a[href]").each((_, anchor) => {
           const node = $(anchor);
           const title2 = clean(node.text() || node.attr("title"));
           const url = absolute(node.attr("href"), response2.url || base);
-          return { title: title2, url };
-        }).get().filter((item) => {
-          if (!item.title || !item.url || !item.url.startsWith(`${base}/`))
-            return false;
-          const name = normalized(item.title);
-          return name === target || name.startsWith(`${target} `);
+          if (!title2 || !url || url.indexOf(`${base}/`) !== 0)
+            return;
+          const name = normalized(title2);
+          if (name === target || name.indexOf(`${target} `) === 0)
+            results.push({ title: title2, url });
         });
         const selected2 = results.find((item) => mediaType === "tv" && seasonPattern2.test(`${item.title} ${item.url}`)) || results.find((item) => info.year && item.title.includes(String(info.year))) || results[0];
         if (selected2 == null ? void 0 : selected2.url)
@@ -1341,21 +1341,26 @@ function distinct(items) {
 }
 function discoverCandidates2(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
+    let stage = "initialization";
     try {
       const type = mediaType === "tv" ? "tv" : "movie";
+      stage = "domain and metadata";
       const [base, info] = yield Promise.all([getBaseUrl(), metadata(tmdbId, type)]);
       if (!(info == null ? void 0 : info.title))
         return [];
+      stage = "same-domain search";
       const pageUrl = yield search2(info, base, type, Number(season) || 1);
       if (!pageUrl)
         return [];
+      stage = "detail page fetch";
       const response = yield request(pageUrl, base);
       if (!response.ok)
         return [];
+      stage = "detail page parsing";
       const $ = cheerio3.load(yield response.text());
       return distinct(type === "tv" ? parseEpisode($, pageUrl, episode) : parseMovie($, pageUrl));
     } catch (error) {
-      console.log(`[HDHub4u Candidates] ${(error == null ? void 0 : error.message) || error}`);
+      console.log(`[HDHub4u Candidates:${stage}] ${(error == null ? void 0 : error.message) || error}`);
       return [];
     }
   });
