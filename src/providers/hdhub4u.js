@@ -117,7 +117,7 @@ function parseMovie($, pageUrl) {
     const node = $(anchor);
     const url = absolute(node.attr('href'), pageUrl);
     if (!/(hubdrive|hubcdn|gadgetsweb|greenmountmotors|hubstream)/i.test(url)) return;
-    const label = clean(`${node.text()} ${node.parent().text()} ${node.closest('h4,h5,p,div').first().text()}`);
+    const label = clean(`${node.text()} ${node.parent().text()} ${node.parent().parent().text()}`);
     const item = candidate(url, label, pageUrl);
     if (item) output.push(item);
   });
@@ -131,13 +131,7 @@ function parseEpisode($, pageUrl, episode) {
     const context = clean(node.parent().text());
     if (!pattern.test(context)) return;
     const url = absolute(node.attr('href'), pageUrl);
-    let section = '';
-    let ancestor = node.parent();
-    for (let depth = 0; depth < 6 && ancestor.length && !section; depth += 1) {
-      section = clean(ancestor.prevAll('h3,h4,h5,h6').first().text());
-      ancestor = ancestor.parent();
-    }
-    const item = candidate(url, `${section} ${context} ${node.text()}`, pageUrl);
+    const item = candidate(url, `${node.parent().parent().text()} ${context} ${node.text()}`, pageUrl);
     if (item) output.push(item);
   });
   return output;
@@ -175,8 +169,11 @@ async function resolveHubDrive(item) {
   const html = await response.text();
   if (/file not found|deleted|just a moment|cf-chl|turnstile/i.test(html)) return [];
   const $ = cheerio.load(html);
-  const routes = $('a[href]').map((_, anchor) => absolute($(anchor).attr('href'), response.url)).get()
-    .filter(url => /hubcloud|hubcdn/i.test(url));
+  const routes = [];
+  $('a[href]').each((_, anchor) => {
+    const url = absolute($(anchor).attr('href'), response.url);
+    if (/hubcloud|hubcdn/i.test(url)) routes.push(url);
+  });
   return (await mapConcurrent([...new Set(routes)], 2, url => resolveCandidate({ ...item, url, resolverType: /hubcdn/i.test(url) ? 'hubcdn' : 'hubcloud' }))).flat();
 }
 async function resolveHubCdn(item) {
@@ -196,8 +193,12 @@ async function resolveProtected(item) {
   if (!response.ok) return [];
   const html = await response.text();
   if (/failed to decode|just a moment|cf-chl|turnstile/i.test(html)) return [];
-  const encodedParts = [...html.matchAll(/s\s*\(\s*['"]o['"]\s*,\s*['"]([A-Za-z0-9+/=]+)['"]|ck\s*\(\s*['"]_wp_http_\d+['"]\s*,\s*['"]([^'"]+)['"]/g)]
-    .map(match => match[1] || match[2]).filter(Boolean);
+  const encodedParts = [];
+  const encodedPattern = /s\s*\(\s*['"]o['"]\s*,\s*['"]([A-Za-z0-9+/=]+)['"]|ck\s*\(\s*['"]_wp_http_\d+['"]\s*,\s*['"]([^'"]+)['"]/g;
+  let encodedMatch;
+  while ((encodedMatch = encodedPattern.exec(html)) !== null) {
+    if (encodedMatch[1] || encodedMatch[2]) encodedParts.push(encodedMatch[1] || encodedMatch[2]);
+  }
   let landing = '';
   for (const encoded of encodedParts) {
     try {
@@ -211,7 +212,10 @@ async function resolveProtected(item) {
     } catch (_) {}
   }
   if (!landing) {
-    const urls = [...html.matchAll(/https?:\\?\/\\?\/[^"'<>\s]+/g)].map(match => match[0].replace(/\\\//g, '/'));
+    const urls = [];
+    const urlPattern = /https?:\\?\/\\?\/[^"'<>\s]+/g;
+    let urlMatch;
+    while ((urlMatch = urlPattern.exec(html)) !== null) urls.push(urlMatch[0].replace(/\\\//g, '/'));
     landing = urls.find(url => /hubcloud|hubdrive|hubcdn|hblinks/i.test(url)) || '';
   }
   if (!/^https?:\/\//i.test(landing)) return [];
@@ -220,8 +224,11 @@ async function resolveProtected(item) {
   const landingHtml = await landingResponse.text();
   if (/just a moment|cf-chl|turnstile/i.test(landingHtml)) return [];
   const $ = cheerio.load(landingHtml);
-  const routes = $('a[href]').map((_, anchor) => absolute($(anchor).attr('href'), landingResponse.url)).get()
-    .filter(url => /hubcloud|hubdrive|hubcdn/i.test(url));
+  const routes = [];
+  $('a[href]').each((_, anchor) => {
+    const url = absolute($(anchor).attr('href'), landingResponse.url);
+    if (/hubcloud|hubdrive|hubcdn/i.test(url)) routes.push(url);
+  });
   if (!routes.length && /hubcloud|hubdrive|hubcdn/i.test(landingResponse.url)) routes.push(landingResponse.url);
   return (await mapConcurrent([...new Set(routes)], 3, url => resolveCandidate({
     ...item, url, referer: landingResponse.url,
