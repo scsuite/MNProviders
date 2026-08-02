@@ -1,6 +1,6 @@
 {
   "name": "MNProviders",
-  "version": "1.0.53",
+  "version": "1.0.54",
   "description": "Independent Nuvio providers with device-side discovery and extraction",
   "scrapers": [
     {
@@ -125,6 +125,21 @@
       "formats": ["hls", "mp4"],
       "logo": "https://www.google.com/s2/favicons?domain=multimovies.makeup&sz=128",
       "contentLanguage": ["en", "hi"],
+      "supportsExternalPlayer": true
+    },
+    {
+      "id": "MovieBlast",
+      "name": "MovieBlast",
+      "description": "Fast direct MovieBlast API links for movies and TV series with multi-language support",
+      "version": "1.0.0",
+      "author": "Phisher and yoruix; Nuvio compatibility port by scsuite",
+      "supportedTypes": ["movie", "tv"],
+      "filename": "providers/MovieBlast.js?v=100",
+      "source": "src/providers/movieblast.js",
+      "enabled": true,
+      "formats": ["mkv", "mp4"],
+      "logo": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/movieblast.png",
+      "contentLanguage": ["en", "hi", "te"],
       "supportsExternalPlayer": true
     },
     {

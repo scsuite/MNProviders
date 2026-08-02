@@ -12,6 +12,7 @@ module.exports = Object.freeze({
   HDHUB4U_SEARCH_API: 'https://search.pingora.fyi/collections/post/documents/search',
   MULTIMOVIES_FALLBACK: 'https://multimovies.makeup',
   CASTLE_API: 'https://api.hlowb.com',
+  MOVIEBLAST_API: 'https://app.cloud-mb.xyz',
   NEXDRIVE: 'https://nexdrive.fit',
   HUBCLOUD: 'https://hubcloud.cx',
   VCLOUD: 'https://vcloud.zip',
