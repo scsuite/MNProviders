@@ -717,14 +717,13 @@ function parseTvCandidates($, detailUrl, targetSeason, targetEpisode) {
   $(".entry-content p, .entry-content h2, .entry-content h3, .entry-content h4, .entry-content pre").each((_, element) => {
     var _a;
     const text = clean($(element).text());
-    const tag = String(element.name || "").toLowerCase();
     const seasonMatch = text.match(/\bseason\s*0*(\d+)\b/i);
-    if (/^h[2-4]$/.test(tag) && seasonMatch) {
+    const links = cloudLinks($, element);
+    if (seasonMatch && !links.length && !hasReleaseDescriptor(text)) {
       currentSeason = Number(seasonMatch[1]);
       descriptor = "";
       return;
     }
-    const links = cloudLinks($, element);
     if (!links.length && hasReleaseDescriptor(text)) {
       const descriptorSeason = (_a = text.match(/\bS0*(\d+)(?:E\d+|\b)/i)) == null ? void 0 : _a[1];
       const belongsToTarget = descriptorSeason ? Number(descriptorSeason) === Number(targetSeason) : currentSeason === Number(targetSeason);
@@ -780,7 +779,9 @@ function postForm(url, values, referer) {
   return __async(this, null, function* () {
     return responseText(url, {
       method: "POST",
-      body: new URLSearchParams(values),
+      // Nuvio's native fetch bridge does not serialize URLSearchParams objects.
+      // Pass the encoded string explicitly so form verification works in QuickJS.
+      body: new URLSearchParams(values).toString(),
       headers: { Referer: referer, "Content-Type": "application/x-www-form-urlencoded" }
     });
   });
