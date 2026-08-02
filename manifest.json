@@ -1,6 +1,6 @@
 {
   "name": "MNProviders",
-  "version": "1.0.59",
+  "version": "1.0.60",
   "description": "Independent Nuvio providers with device-side discovery and extraction",
   "scrapers": [
     {
@@ -86,10 +86,10 @@
       "id": "FourKHDHub",
       "name": "4KHDHub",
       "description": "Independent 4KHDHub provider with HubCloud and HubDrive resolution",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": ["movie", "tv"],
-      "filename": "providers/FourKHDHub.js?v=100",
+      "filename": "providers/FourKHDHub.js?v=110",
       "source": "src/providers/fourkHDhub.js",
       "enabled": true,
       "formats": ["mkv", "mp4"],
@@ -101,10 +101,10 @@
       "id": "HDHub4u",
       "name": "HDHub4u",
       "description": "Independent HDHub4u provider with Drive, Instant and protected redirect routes",
-      "version": "1.0.8",
+      "version": "1.1.0",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": ["movie", "tv"],
-      "filename": "providers/HDHub4u.js?v=108",
+      "filename": "providers/HDHub4u.js?v=110",
       "source": "src/providers/hdhub4u.js",
       "enabled": true,
       "formats": ["hls", "mkv", "mp4"],

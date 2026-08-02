@@ -3,6 +3,8 @@ const assert = require('assert');
 (async () => {
   const health = await handleHealth();
   assert(health.providers.includes('uhdmovies'), 'Worker health must advertise UHDMovies support');
+  assert(health.providers.includes('4khdhub'), 'Worker health must advertise 4KHDHub support');
+  assert(health.providers.includes('hdhub4u'), 'Worker health must advertise HDHub4u support');
 
   const { handleRequest } = await import('../worker/src/index.js');
   const target = 'https://abc123.r2.cloudflarestorage.com/hub/file-token?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=a%2Bb%2Fc%3D';

@@ -171,10 +171,35 @@ async function resolveCandidate(candidate) {
   } catch (_) { return []; }
 }
 
-async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+async function getStreamsLocal(tmdbId, mediaType, season = 1, episode = 1) {
   const candidates = await discoverCandidates(tmdbId, mediaType, season, episode);
   const resolved = await mapConcurrent(candidates, 4, resolveCandidate);
   return uniqueExactStreams(resolved.flat().filter(Boolean));
 }
 
-module.exports = { discoverCandidates, resolveCandidate, getStreams };
+async function fetchWorkerStreams(tmdbId, mediaType, season, episode) {
+  try {
+    const query = new URLSearchParams({
+      tmdbId: String(tmdbId), type: mediaType,
+      season: String(season || 1), episode: String(episode || 1),
+      providers: '4khdhub', timeout: '30000'
+    });
+    const response = await fetch(`${DOMAINS.WORKER}/streams?${query.toString()}`, { headers: { Accept: 'application/json' } });
+    if (!response.ok) return null;
+    const data = await response.json();
+    const state = data?.providers?.['4khdhub'];
+    if (!data?.ok || state?.status !== 'success') return null;
+    const streams = (Array.isArray(data.directStreams) ? data.directStreams : [])
+      .filter(stream => String(stream?.provider || '').toLowerCase() === '4khdhub');
+    return streams.length ? streams : null;
+  } catch (_) { return null; }
+}
+
+async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+  const type = mediaType === 'tv' ? 'tv' : 'movie';
+  if (!tmdbId || (type === 'tv' && (!season || !episode))) return [];
+  const workerStreams = await fetchWorkerStreams(tmdbId, type, season, episode);
+  return workerStreams ? uniqueExactStreams(workerStreams) : getStreamsLocal(tmdbId, type, season, episode);
+}
+
+module.exports = { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };

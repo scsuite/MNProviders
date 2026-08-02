@@ -2,16 +2,17 @@ import moviesDriveModule from '../../src/moviesdrive/index.js';
 import vegaMoviesModule from '../../src/providers/vegamovies.js';
 import movies4uModule from '../../src/providers/movies4u.js';
 import fourkHDHubModule from '../../src/providers/fourkHDhub.js';
+import hdHub4uModule from '../../src/providers/hdhub4u.js';
 import multiMoviesModule from '../../src/providers/multimovies.js';
 import castleModule from '../../src/providers/castle.js';
 import uhdMoviesModule from '../../src/providers/uhdmovies.js';
 import domainConfig from '../../src/config/domains.js';
 
-const VERSION = '1.0.16';
+const VERSION = '1.0.17';
 const DEFAULT_TIMEOUT_MS = 8000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
-const UHD_CACHE_SECONDS = 300;
+const DIRECT_RESOLUTION_CACHE_SECONDS = 300;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -89,24 +90,29 @@ async function runWorkerDiscovery(params) {
     ? deadline(movies4uModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'movies4u')
     : Promise.resolve({ provider: 'movies4u', data: [], error: null });
   const fourkHDHubJob = params.providers.includes('4khdhub')
-    ? deadline(fourkHDHubModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, '4khdhub')
+    ? deadline(fourkHDHubModule.getStreamsLocal(params.tmdbId, params.type, params.season, params.episode), params.timeout, '4khdhub')
     : Promise.resolve({ provider: '4khdhub', data: [], error: null });
+  const hdHub4uJob = params.providers.includes('hdhub4u')
+    ? deadline(hdHub4uModule.getStreamsLocal(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'hdhub4u')
+    : Promise.resolve({ provider: 'hdhub4u', data: [], error: null });
   const multiMoviesJob = params.providers.includes('multimovies')
     ? deadline(multiMoviesModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'multimovies')
     : Promise.resolve({ provider: 'multimovies', data: [], error: null });
   const uhdMoviesJob = params.providers.includes('uhdmovies')
     ? deadline(uhdMoviesModule.getStreamsLocal(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'uhdmovies')
     : Promise.resolve({ provider: 'uhdmovies', data: [], error: null });
-  const [castleRes, mdRes, vegaRes, movies4uRes, fourkHDHubRes, multiMoviesRes, uhdMoviesRes] = await Promise.all([
-    castleJob, mdJob, vegaJob, movies4uJob, fourkHDHubJob, multiMoviesJob, uhdMoviesJob
+  const [castleRes, mdRes, vegaRes, movies4uRes, fourkHDHubRes, hdHub4uRes, multiMoviesRes, uhdMoviesRes] = await Promise.all([
+    castleJob, mdJob, vegaJob, movies4uJob, fourkHDHubJob, hdHub4uJob, multiMoviesJob, uhdMoviesJob
   ]);
 
   const directStreams = [
     ...castleRes.data.map(stream => ({ ...stream, provider: 'castle', resolverType: 'direct' })),
+    ...fourkHDHubRes.data.map(stream => ({ ...stream, provider: '4KHDHub', resolverType: 'direct' })),
+    ...hdHub4uRes.data.map(stream => ({ ...stream, provider: 'HDHub4u', resolverType: 'direct' })),
     ...uhdMoviesRes.data.map(stream => ({ ...stream, provider: 'UHDMovies', resolverType: 'direct' }))
   ];
 
-  const candidates = [...mdRes.data, ...vegaRes.data, ...movies4uRes.data, ...fourkHDHubRes.data, ...multiMoviesRes.data];
+  const candidates = [...mdRes.data, ...vegaRes.data, ...movies4uRes.data, ...multiMoviesRes.data];
   const providerResult = (result) => ({
     count: result.data.length,
     error: result.error,
@@ -116,13 +122,14 @@ async function runWorkerDiscovery(params) {
   return {
     directStreams,
     candidates,
-    deviceProviders: params.providers.filter(provider => !['castle', 'uhdmovies'].includes(provider)),
+    deviceProviders: params.providers.filter(provider => !['castle', '4khdhub', 'hdhub4u', 'uhdmovies'].includes(provider)),
     providers: {
       castle: providerResult(castleRes),
       moviesdrive: providerResult(mdRes),
       vegamovies: providerResult(vegaRes),
       movies4u: providerResult(movies4uRes),
       '4khdhub': providerResult(fourkHDHubRes),
+      hdhub4u: providerResult(hdHub4uRes),
       multimovies: providerResult(multiMoviesRes),
       uhdmovies: providerResult(uhdMoviesRes)
     }
@@ -194,8 +201,8 @@ function parseRequest(url, env) {
   const type = normalizeType(url.searchParams.get('type'));
   const season = Number(url.searchParams.get('season') || 1);
   const episode = Number(url.searchParams.get('episode') || 1);
-  const allowedProviders = ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'castle', 'uhdmovies'];
-  const requested = String(url.searchParams.get('providers') || 'moviesdrive,vegamovies,movies4u,4khdhub,multimovies,castle')
+  const allowedProviders = ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'hdhub4u', 'multimovies', 'castle', 'uhdmovies'];
+  const requested = String(url.searchParams.get('providers') || 'moviesdrive,vegamovies,movies4u,4khdhub,hdhub4u,multimovies,castle')
     .toLowerCase().split(',').map(value => value.trim()).filter(value => allowedProviders.includes(value));
   const configuredTimeout = Number(url.searchParams.get('timeout') || env?.PROVIDER_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
   return {
@@ -236,8 +243,8 @@ async function cachedResponse(request, env, ctx, params) {
     providers: result.providers
   };
   const complete = params.providers.every(provider => result.providers[provider]?.status === 'success');
-  const cacheSeconds = params.providers.includes('uhdmovies')
-    ? UHD_CACHE_SECONDS
+  const cacheSeconds = params.providers.some(provider => ['4khdhub', 'hdhub4u', 'uhdmovies'].includes(provider))
+    ? DIRECT_RESOLUTION_CACHE_SECONDS
     : complete ? CACHE_SECONDS : PARTIAL_CACHE_SECONDS;
   const response = json(payload, 200, {
     'Cache-Control': `public, max-age=${cacheSeconds}`,
@@ -253,7 +260,7 @@ export async function handleRequest(request, env = {}, ctx = {}) {
   const url = new URL(request.url);
   if (request.method !== 'GET') return json({ ok: false, error: 'GET only' }, 405);
   if (url.pathname === '/' || url.pathname === '/health') {
-    return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'castle', 'uhdmovies'] });
+    return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'hdhub4u', 'multimovies', 'castle', 'uhdmovies'] });
   }
   if (url.pathname === '/diagnostics') {
     return json({ ok: true, version: VERSION, probes: await diagnostics() }, 200, { 'Cache-Control': 'no-store' });

@@ -10,11 +10,11 @@ Last updated: 2026-08-02 (Asia/Karachi)
   `https://raw.githubusercontent.com/scsuite/MNProviders/refs/heads/main/manifest.json`
 - Local project folder used during development:
   `C:\Users\AMS-Admin\Desktop\MNProviders`
-- Current repository/manifest version: `1.0.54`
-- Current latest commit: `ce03a78 Add MovieBlast standalone provider`
+- Current repository/manifest version: `1.0.60`
+- Current latest work: Worker-first UHDMovies, 4KHDHub and HDHub4u resolution
 - Cloudflare Worker:
   `https://lucky-star-3059.salman-sohail93.workers.dev`
-- Currently deployed Worker version: `1.0.15`
+- Worker source/bundle version prepared: `1.0.17` (manual Cloudflare deployment required)
 
 The project targets Nuvio on Mobile, Desktop and TV. It contains movie and TV
 providers only; anime/cartoon-only providers are intentionally excluded.
@@ -50,8 +50,9 @@ These requirements must be preserved in future work:
 | MoviesDrive | 2.0.15 | Yes | Movie, TV | HubCloud plus GDFlix-style extraction; generally works but protected routes can vary. |
 | VegaMovies | 1.0.0 | Yes | Movie, TV | VCloud and FastDL extraction; working. |
 | Movies4u | 1.0.0 | Yes | Movie, TV | HubCloud, GDFlix, VCloud and FastDL routes; working. |
-| 4KHDHub | 1.0.0 | Yes | Movie, TV | HubCloud/HubDrive routes; some returned Google download URLs are not playable as streams. |
-| HDHub4u | 1.0.8 | Yes | Movie, TV | Device-only discovery; preserves all Drive/Instant/protected links but can be slow. |
+| 4KHDHub | 1.1.0 | Yes | Movie, TV | Full Worker-side discovery/resolution in parallel; falls back to device when the Worker is blocked or empty. |
+| HDHub4u | 1.1.0 | Yes | Movie, TV | Full Worker-side discovery/resolution in parallel; falls back to device when the Worker is blocked or empty. |
+| UHDMovies | 1.1.0 | Yes | Movie, TV | Worker-side multi-route resolution; Resume Cloud is preferred while distinct Google progressive links are preserved. |
 | MultiMovies | 1.0.0 | Yes | Movie, TV | Embed/AES stream resolution. |
 | MovieBlast | 1.0.0 | Yes | Movie, TV | Fast direct API/CDN provider; added in latest commit. |
 | Castle | 1.0.0 | Yes | Movie, TV | Multilingual HLS API fallback; working. |
@@ -133,8 +134,9 @@ target see the Worker's IP.
 
 The earlier Worker-first architecture had a critical false-negative behavior:
 the Worker could return HTTP 200 with zero candidates after being challenged, and
-the device would not activate local fallback. Providers were therefore split and
-HDHub4u was ultimately moved entirely to device-side discovery.
+the device would not activate local fallback. The current 4KHDHub and HDHub4u
+providers accept Worker results only when their provider state is `success` and
+direct streams are non-empty; otherwise they activate the original local path.
 
 The Worker should only be used where the upstream accepts it: APIs, metadata/cache,
 or discovery routes empirically verified from Worker IPs. Do not assume it bypasses
@@ -164,8 +166,8 @@ around `.closest`, `.map().get`, `.matchAll` and `.prevAll`.
 
 Current implementation:
 
-- device-side discovery/resolution only;
-- no Worker dependency;
+- Worker-first full discovery and resolution;
+- automatic device-side fallback on Worker error, timeout or empty results;
 - no Watch links;
 - no artificial result caps;
 - expands HubDrive wrappers;
@@ -180,9 +182,11 @@ Live validation before the latest provider work:
 - Musafir Cafe S01E01: 8 links.
 - Musafir Cafe S01E02: 8 links.
 
-It remains slow because Nuvio serializes native fetches and HDHub4u requires many
-network hops. The user explicitly chose to leave it as-is rather than reduce links,
-split it, modify Nuvio, or introduce an external residential server.
+The new Worker executes 4KHDHub and HDHub4u concurrently. A combined live Matrix
+test returned four 4KHDHub streams and three HDHub4u streams in about 14.8 seconds;
+the result is cached for five minutes. If an upstream challenges the Worker's
+datacenter IP, the provider deliberately falls back to the slower device path so a
+Worker false negative does not become `No streams found`.
 
 Key commits:
 
@@ -282,14 +286,15 @@ an unprotected legitimate API.
 
 ## 11. Cloudflare Worker status
 
-Current root response:
+Expected root response after manually deploying `worker/dist/worker.js`:
 
 ```json
-{"ok":true,"service":"MNProviders Resolver","version":"1.0.15","providers":["moviesdrive","vegamovies","movies4u","4khdhub","multimovies","castle"]}
+{"ok":true,"service":"MNProviders Resolver","version":"1.0.17","providers":["moviesdrive","vegamovies","movies4u","4khdhub","hdhub4u","multimovies","castle","uhdmovies"]}
 ```
 
-HDHub4u and MovieBlast are not Worker providers. MovieBlast does not need Worker
-deployment. HDHub4u was deliberately removed from Worker execution.
+UHDMovies, 4KHDHub and HDHub4u perform full resolution in the Worker. The two Hub
+providers retain a local fallback because some upstreams may block Cloudflare
+datacenter requests. MovieBlast remains device-side and does not need the Worker.
 
 For a Worker source change:
 
@@ -422,9 +427,10 @@ not evidence that it will work in Nuvio.
 
 - Git branch: `main`
 - Remote: `https://github.com/scsuite/MNProviders.git`
-- Latest pushed commit: `ce03a78`
-- Manifest: `1.0.54`
-- Worker: `1.0.15`
-- Working tree was clean before this handover document was added.
-- Last complete provider build/test for MovieBlast passed.
+- Manifest: `1.0.60`
+- 4KHDHub: `1.1.0`
+- HDHub4u: `1.1.0`
+- Worker source/bundle: `1.0.17` (manual dashboard deployment required)
+- Provider tests, validation, sorting tests, generated-bundle syntax checks and
+  Worker redirect tests passed for the parallel implementation.
 

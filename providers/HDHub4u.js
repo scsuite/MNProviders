@@ -97,6 +97,8 @@ var require_domains = __commonJS({
       HDHUB4U_SEARCH_API: "https://search.pingora.fyi/collections/post/documents/search",
       MULTIMOVIES_FALLBACK: "https://multimovies.makeup",
       CASTLE_API: "https://api.hlowb.com",
+      MOVIEBLAST_API: "https://app.cloud-mb.xyz",
+      UHDMOVIES_FALLBACK: "https://uhdmovies.casa",
       NEXDRIVE: "https://nexdrive.fit",
       HUBCLOUD: "https://hubcloud.cx",
       VCLOUD: "https://vcloud.zip",
@@ -1557,11 +1559,46 @@ function resolveCandidate2(item) {
     }
   });
 }
-function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
+function getStreamsLocal(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
     const candidates = yield discoverCandidates2(tmdbId, mediaType, season, episode);
     const downloadCandidates = candidates.filter((candidate2) => candidate2.resolverType !== "watch");
     return uniqueExactStreams2((yield mapConcurrent2(downloadCandidates, 4, resolveCandidate2)).flat().filter(Boolean));
   });
 }
-module.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreams: getStreams2 };
+function fetchWorkerStreams(tmdbId, mediaType, season, episode) {
+  return __async(this, null, function* () {
+    var _a;
+    try {
+      const query = new URLSearchParams({
+        tmdbId: String(tmdbId),
+        type: mediaType,
+        season: String(season || 1),
+        episode: String(episode || 1),
+        providers: "hdhub4u",
+        timeout: "40000"
+      });
+      const response = yield fetch(`${DOMAINS4.WORKER}/streams?${query.toString()}`, { headers: { Accept: "application/json" } });
+      if (!response.ok)
+        return null;
+      const data = yield response.json();
+      const state = (_a = data == null ? void 0 : data.providers) == null ? void 0 : _a.hdhub4u;
+      if (!(data == null ? void 0 : data.ok) || (state == null ? void 0 : state.status) !== "success")
+        return null;
+      const streams = (Array.isArray(data.directStreams) ? data.directStreams : []).filter((stream) => String((stream == null ? void 0 : stream.provider) || "").toLowerCase() === "hdhub4u");
+      return streams.length ? streams : null;
+    } catch (_) {
+      return null;
+    }
+  });
+}
+function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
+  return __async(this, null, function* () {
+    const type = mediaType === "tv" ? "tv" : "movie";
+    if (!tmdbId || type === "tv" && (!season || !episode))
+      return [];
+    const workerStreams = yield fetchWorkerStreams(tmdbId, type, season, episode);
+    return workerStreams ? uniqueExactStreams2(workerStreams) : getStreamsLocal(tmdbId, type, season, episode);
+  });
+}
+module.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreamsLocal, fetchWorkerStreams, getStreams: getStreams2 };
