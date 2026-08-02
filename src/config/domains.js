@@ -13,6 +13,7 @@ module.exports = Object.freeze({
   MULTIMOVIES_FALLBACK: 'https://multimovies.makeup',
   CASTLE_API: 'https://api.hlowb.com',
   MOVIEBLAST_API: 'https://app.cloud-mb.xyz',
+  UHDMOVIES_FALLBACK: 'https://uhdmovies.casa',
   NEXDRIVE: 'https://nexdrive.fit',
   HUBCLOUD: 'https://hubcloud.cx',
   VCLOUD: 'https://vcloud.zip',
