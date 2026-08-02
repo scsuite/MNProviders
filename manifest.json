@@ -1,6 +1,6 @@
 {
   "name": "MNProviders",
-  "version": "1.0.45",
+  "version": "1.0.46",
   "description": "Independent Nuvio providers with device-side discovery and extraction",
   "scrapers": [
     {
@@ -101,10 +101,10 @@
       "id": "HDHub4u",
       "name": "HDHub4u",
       "description": "Independent HDHub4u provider with Drive, Instant and protected redirect routes",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": ["movie", "tv"],
-      "filename": "providers/HDHub4u.js?v=100",
+      "filename": "providers/HDHub4u.js?v=101",
       "source": "src/providers/hdhub4u.js",
       "enabled": true,
       "formats": ["hls", "mkv", "mp4"],

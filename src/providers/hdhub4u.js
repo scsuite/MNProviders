@@ -1,4 +1,5 @@
 const cheerio = require('cheerio-without-node-native');
+const CryptoJS = require('crypto-js');
 const DOMAINS = require('../config/domains');
 const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 const moviesDrive = require('../moviesdrive/index');
@@ -9,6 +10,8 @@ const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',
   Accept: 'text/html,application/json;q=0.9,*/*;q=0.8'
 };
+const VIDSTACK_KEY = CryptoJS.enc.Utf8.parse('kiemtienmua911ca');
+const VIDSTACK_IVS = ['1234567890oiuytr', '0123456789abcdef'].map(value => CryptoJS.enc.Utf8.parse(value));
 const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
 const normalized = value => clean(value).toLowerCase().replace(/\(\d{4}\)/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -35,6 +38,12 @@ function qualityFrom(value) {
 }
 function sizeFrom(value) { return clean(value).match(/\b\d+(?:\.\d+)?\s*(?:GB|MB)(?:\/E)?\b/i)?.[0]; }
 function absolute(value, base) { try { return new URL(value, base).toString(); } catch (_) { return ''; } }
+function decodeBase64(value) {
+  try { return typeof atob === 'function' ? atob(value) : Buffer.from(value, 'base64').toString('utf8'); } catch (_) { return ''; }
+}
+function rot13(value) {
+  return String(value || '').replace(/[a-zA-Z]/g, character => String.fromCharCode((character <= 'Z' ? 90 : 122) >= (character = character.charCodeAt(0) + 13) ? character : character - 26));
+}
 
 async function search(info, base, mediaType, season) {
   const params = new URLSearchParams({
@@ -158,10 +167,66 @@ async function resolveProtected(item) {
   if (!response.ok) return [];
   const html = await response.text();
   if (/failed to decode|just a moment|cf-chl|turnstile/i.test(html)) return [];
-  const urls = [...html.matchAll(/https?:\\?\/\\?\/[^"'<>\\s]+/g)].map(match => match[0].replace(/\\\//g, '/'));
-  const route = urls.find(url => /hubcloud|hubdrive|hubcdn/i.test(url));
-  if (!route) return [];
-  return resolveCandidate({ ...item, url: route, resolverType: /hubcdn/i.test(route) ? 'hubcdn' : /hubdrive/i.test(route) ? 'hubdrive' : 'hubcloud' });
+  const encodedParts = [...html.matchAll(/s\s*\(\s*['"]o['"]\s*,\s*['"]([A-Za-z0-9+/=]+)['"]|ck\s*\(\s*['"]_wp_http_\d+['"]\s*,\s*['"]([^'"]+)['"]/g)]
+    .map(match => match[1] || match[2]).filter(Boolean);
+  let landing = '';
+  for (const encoded of encodedParts) {
+    try {
+      const payload = JSON.parse(decodeBase64(rot13(decodeBase64(decodeBase64(encoded)))));
+      landing = decodeBase64(payload.o || '').trim();
+      if (!landing && payload.data && payload.blog_url) {
+        const redirect = await request(`${payload.blog_url}?re=${encodeURIComponent(decodeBase64(payload.data).trim())}`, response.url);
+        if (redirect.ok) landing = clean(await redirect.text());
+      }
+      if (/^https?:\/\//i.test(landing)) break;
+    } catch (_) {}
+  }
+  if (!landing) {
+    const urls = [...html.matchAll(/https?:\\?\/\\?\/[^"'<>\s]+/g)].map(match => match[0].replace(/\\\//g, '/'));
+    landing = urls.find(url => /hubcloud|hubdrive|hubcdn|hblinks/i.test(url)) || '';
+  }
+  if (!/^https?:\/\//i.test(landing)) return [];
+  const landingResponse = await request(landing, response.url);
+  if (!landingResponse.ok) return [];
+  const landingHtml = await landingResponse.text();
+  if (/just a moment|cf-chl|turnstile/i.test(landingHtml)) return [];
+  const $ = cheerio.load(landingHtml);
+  const routes = $('a[href]').map((_, anchor) => absolute($(anchor).attr('href'), landingResponse.url)).get()
+    .filter(url => /hubcloud|hubdrive|hubcdn/i.test(url));
+  if (!routes.length && /hubcloud|hubdrive|hubcdn/i.test(landingResponse.url)) routes.push(landingResponse.url);
+  return (await mapConcurrent([...new Set(routes)], 3, url => resolveCandidate({
+    ...item, url, referer: landingResponse.url,
+    resolverType: /hubcdn/i.test(url) ? 'hubcdn' : /hubdrive/i.test(url) ? 'hubdrive' : 'hubcloud'
+  }))).flat();
+}
+function decryptVidStack(ciphertext) {
+  for (const iv of VIDSTACK_IVS) {
+    try {
+      const bytes = CryptoJS.AES.decrypt({ ciphertext: CryptoJS.enc.Hex.parse(String(ciphertext).trim()) }, VIDSTACK_KEY, {
+        iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7
+      });
+      const decoded = bytes.toString(CryptoJS.enc.Utf8).replace(/[\u0000-\u001f]+$/g, '');
+      if (decoded) return JSON.parse(decoded);
+    } catch (_) {}
+  }
+  return null;
+}
+async function resolveWatch(item) {
+  const parsed = new URL(item.url);
+  const id = parsed.hash.slice(1).split('&')[0] || parsed.pathname.split('/').filter(Boolean).pop();
+  if (!id) return [];
+  const response = await request(`${parsed.origin}/api/v1/video?id=${encodeURIComponent(id)}`, item.url);
+  if (!response.ok) return [];
+  const raw = clean(await response.text());
+  let payload;
+  try { payload = JSON.parse(raw); } catch (_) { payload = decryptVidStack(raw); }
+  const mediaUrl = payload?.cfNative || payload?.source;
+  if (!/^https?:\/\//i.test(mediaUrl || '')) return [];
+  const subtitles = Object.entries(payload.subtitle || {}).map(([language, url]) => ({ language, url: absolute(String(url).split('#')[0], parsed.origin) })).filter(entry => entry.url);
+  return [{
+    name: `HDHub4u • ${item.quality} • Watch`, url: mediaUrl, quality: item.quality,
+    size: item.size, source: 'Watch', provider: 'HDHub4u', headers: { ...HEADERS, Referer: parsed.origin }, subtitles, seekable: true
+  }];
 }
 async function resolveCandidate(item) {
   if (!item?.url) return [];
@@ -169,6 +234,7 @@ async function resolveCandidate(item) {
     if (item.resolverType === 'hubdrive') return resolveHubDrive(item);
     if (item.resolverType === 'hubcdn') return resolveHubCdn(item);
     if (item.resolverType === 'protector') return resolveProtected(item);
+    if (item.resolverType === 'watch') return resolveWatch(item);
     if (item.resolverType === 'hubcloud') {
       const resolver = moviesDrive.resolveCandidate || moviesDrive.default?.resolveCandidate;
       if (typeof resolver !== 'function') return [];
