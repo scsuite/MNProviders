@@ -1,175 +1,21 @@
 {
-  "name": "MNProviders",
-  "version": "1.0.61",
-  "description": "Independent Nuvio providers with Worker-first resolution and safe device fallback",
+  "name": "MNProviders MovieBox Experimental",
+  "version": "1.0.1",
+  "description": "Isolated experimental MovieBox provider using device-side signed API requests",
   "scrapers": [
     {
-      "id": "StreamPlay",
-      "name": "StreamPlay",
-      "description": "Experimental combined aggregator; use the independent providers for reliable Mobile, Desktop and TV loading",
-      "version": "1.0.31",
-      "author": "Phisher; Nuvio compatibility port by scsuite",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/StreamPlay.js?v=131",
-      "source": "src/providers/streamplay.js",
-      "enabled": false,
-      "formats": [
-        "hls",
-        "mkv"
-      ],
-      "logo": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/RepoIcon.png",
-      "contentLanguage": [
-        "en",
-        "hi",
-        "ur"
-      ],
-      "supportsExternalPlayer": true
-    },
-    {
-      "id": "MoviesDrive",
-      "name": "MoviesDrive",
-      "description": "Independent MoviesDrive provider with HubCloud and Phisher-style GDFlix extraction",
-      "version": "2.1.0",
-      "author": "Phisher; Nuvio compatibility port by scsuite",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/MoviesDrive.js?v=210",
-      "source": "src/moviesdrive/index.js",
-      "enabled": true,
-      "formats": [
-        "mkv",
-        "mp4"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=moviesdrive.christmas&sz=128",
-      "contentLanguage": [
-        "en",
-        "hi"
-      ],
-      "supportsExternalPlayer": true
-    },
-    {
-      "id": "VegaMovies",
-      "name": "VegaMovies",
-      "description": "Independent VegaMovies provider with VCloud and FastDL extraction",
-      "version": "1.1.0",
-      "author": "Phisher; Nuvio compatibility port by scsuite",
+      "id": "MovieBox",
+      "name": "MovieBox",
+      "description": "Experimental multilingual MovieBox movies and TV provider; Android device-side only",
+      "version": "1.0.1",
+      "author": "Phisher98; Nuvio compatibility port by scsuite",
       "supportedTypes": ["movie", "tv"],
-      "filename": "providers/VegaMovies.js?v=110",
-      "source": "src/providers/vegamovies.js",
+      "filename": "providers/MovieBox.js?v=101",
+      "source": "src/providers/moviebox.js",
       "enabled": true,
-      "formats": ["mkv", "mp4"],
-      "logo": "https://www.google.com/s2/favicons?domain=vegamovies.catering&sz=128",
-      "contentLanguage": ["en", "hi"],
-      "supportsExternalPlayer": true
-    },
-    {
-      "id": "Movies4u",
-      "name": "Movies4u",
-      "description": "Independent Movies4u provider with HubCloud, GDFlix, VCloud and FastDL routes",
-      "version": "1.0.0",
-      "author": "Phisher; Nuvio compatibility port by scsuite",
-      "supportedTypes": ["movie", "tv"],
-      "filename": "providers/Movies4u.js?v=100",
-      "source": "src/providers/movies4u.js",
-      "enabled": true,
-      "formats": ["mkv", "mp4"],
-      "logo": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/movies4u.png",
-      "contentLanguage": ["en", "hi"],
-      "supportsExternalPlayer": true
-    },
-    {
-      "id": "FourKHDHub",
-      "name": "4KHDHub",
-      "description": "Independent 4KHDHub provider with HubCloud and HubDrive resolution",
-      "version": "1.1.0",
-      "author": "Phisher; Nuvio compatibility port by scsuite",
-      "supportedTypes": ["movie", "tv"],
-      "filename": "providers/FourKHDHub.js?v=110",
-      "source": "src/providers/fourkHDhub.js",
-      "enabled": true,
-      "formats": ["mkv", "mp4"],
-      "logo": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/4KHDHUB-Bright-Logo.png",
-      "contentLanguage": ["en", "hi"],
-      "supportsExternalPlayer": true
-    },
-    {
-      "id": "HDHub4u",
-      "name": "HDHub4u",
-      "description": "Independent HDHub4u provider with Drive, Instant and protected redirect routes",
-      "version": "1.1.0",
-      "author": "Phisher; Nuvio compatibility port by scsuite",
-      "supportedTypes": ["movie", "tv"],
-      "filename": "providers/HDHub4u.js?v=110",
-      "source": "src/providers/hdhub4u.js",
-      "enabled": true,
-      "formats": ["hls", "mkv", "mp4"],
-      "logo": "https://www.google.com/s2/favicons?domain=hdhub4u.cl&sz=128",
-      "contentLanguage": ["en", "hi"],
-      "supportsExternalPlayer": true
-    },
-    {
-      "id": "MultiMovies",
-      "name": "MultiMovies",
-      "description": "Independent MultiMovies provider with embed and AES stream resolution",
-      "version": "1.0.0",
-      "author": "Phisher; Nuvio compatibility port by scsuite",
-      "supportedTypes": ["movie", "tv"],
-      "filename": "providers/MultiMovies.js?v=100",
-      "source": "src/providers/multimovies.js",
-      "enabled": true,
-      "formats": ["hls", "mp4"],
-      "logo": "https://www.google.com/s2/favicons?domain=multimovies.makeup&sz=128",
-      "contentLanguage": ["en", "hi"],
-      "supportsExternalPlayer": true
-    },
-    {
-      "id": "MovieBlast",
-      "name": "MovieBlast",
-      "description": "Fast direct MovieBlast API links for movies and TV series with multi-language support",
-      "version": "1.0.0",
-      "author": "Phisher and yoruix; Nuvio compatibility port by scsuite",
-      "supportedTypes": ["movie", "tv"],
-      "filename": "providers/MovieBlast.js?v=100",
-      "source": "src/providers/movieblast.js",
-      "enabled": true,
-      "formats": ["mkv", "mp4"],
-      "logo": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/movieblast.png",
-      "contentLanguage": ["en", "hi", "te"],
-      "supportsExternalPlayer": true
-    },
-    {
-      "id": "Castle",
-      "name": "Castle",
-      "description": "Independent Castle API provider with multilingual HLS streams",
-      "version": "1.0.0",
-      "author": "Phisher; Nuvio compatibility port by scsuite",
-      "supportedTypes": ["movie", "tv"],
-      "filename": "providers/Castle.js?v=100",
-      "source": "src/providers/castle.js",
-      "enabled": true,
-      "formats": ["hls"],
-      "logo": "https://www.google.com/s2/favicons?domain=castleapp.com&sz=128",
-      "contentLanguage": ["en", "hi", "ur"],
-      "supportsExternalPlayer": true
-    },
-    {
-      "id": "UHDMovies",
-      "name": "UHDMovies",
-      "description": "Independent UHDMovies provider with seekable DriveSeed Resume links and progressive Google fallback",
-      "version": "1.1.0",
-      "author": "Phisher and yoruix; Nuvio compatibility port by scsuite",
-      "supportedTypes": ["movie", "tv"],
-      "filename": "providers/UHDMovies.js?v=110",
-      "source": "src/providers/uhdmovies.js",
-      "enabled": true,
-      "formats": ["mkv"],
-      "logo": "https://www.google.com/s2/favicons?domain=uhdmovies.autos&sz=128",
-      "contentLanguage": ["en", "hi"],
+      "formats": ["hls", "mp4", "mkv", "dash"],
+      "logo": "https://raw.githubusercontent.com/phisher98/TVVVV/refs/heads/main/Icons/moviebox.png",
+      "contentLanguage": ["en", "hi", "ta", "te", "ko"],
       "supportsExternalPlayer": true
     }
   ]
