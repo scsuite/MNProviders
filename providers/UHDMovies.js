@@ -961,11 +961,49 @@ function resolveCandidate(item) {
     }
   });
 }
-function getStreams(tmdbId, mediaType = "movie", season = 1, episode = 1) {
+function getStreamsLocal(tmdbId, mediaType = "movie", season = 1, episode = 1) {
   return __async(this, null, function* () {
     const candidates = yield discoverCandidates(tmdbId, mediaType, season, episode);
     const resolved = yield mapConcurrent(candidates, 4, resolveCandidate);
     return uniqueExactStreams(resolved.flat().filter(Boolean));
   });
 }
-module.exports = { discoverCandidates, resolveCandidate, getStreams };
+function fetchWorkerStreams(tmdbId, mediaType, season, episode) {
+  return __async(this, null, function* () {
+    var _a;
+    try {
+      const query = new URLSearchParams({
+        tmdbId: String(tmdbId),
+        type: mediaType,
+        season: String(season || 1),
+        episode: String(episode || 1),
+        providers: "uhdmovies",
+        timeout: "30000"
+      });
+      const response = yield fetch(`${DOMAINS.WORKER}/streams?${query.toString()}`, {
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok)
+        return null;
+      const data = yield response.json();
+      const state = (_a = data == null ? void 0 : data.providers) == null ? void 0 : _a.uhdmovies;
+      if (!(data == null ? void 0 : data.ok) || !state || /^(?:error|timeout|blocked)$/i.test(String(state.status || "")))
+        return null;
+      return (Array.isArray(data.directStreams) ? data.directStreams : []).filter((stream) => String((stream == null ? void 0 : stream.provider) || "").toLowerCase() === "uhdmovies");
+    } catch (_) {
+      return null;
+    }
+  });
+}
+function getStreams(tmdbId, mediaType = "movie", season = 1, episode = 1) {
+  return __async(this, null, function* () {
+    const type = mediaType === "tv" ? "tv" : "movie";
+    if (!tmdbId || type === "tv" && (!season || !episode))
+      return [];
+    const workerStreams = yield fetchWorkerStreams(tmdbId, type, season, episode);
+    if (workerStreams !== null)
+      return uniqueExactStreams(workerStreams);
+    return getStreamsLocal(tmdbId, type, season, episode);
+  });
+}
+module.exports = { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };

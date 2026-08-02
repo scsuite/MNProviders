@@ -4,12 +4,14 @@ import movies4uModule from '../../src/providers/movies4u.js';
 import fourkHDHubModule from '../../src/providers/fourkHDhub.js';
 import multiMoviesModule from '../../src/providers/multimovies.js';
 import castleModule from '../../src/providers/castle.js';
+import uhdMoviesModule from '../../src/providers/uhdmovies.js';
 import domainConfig from '../../src/config/domains.js';
 
-const VERSION = '1.0.15';
+const VERSION = '1.0.16';
 const DEFAULT_TIMEOUT_MS = 8000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
+const UHD_CACHE_SECONDS = 300;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -92,15 +94,17 @@ async function runWorkerDiscovery(params) {
   const multiMoviesJob = params.providers.includes('multimovies')
     ? deadline(multiMoviesModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'multimovies')
     : Promise.resolve({ provider: 'multimovies', data: [], error: null });
-  const [castleRes, mdRes, vegaRes, movies4uRes, fourkHDHubRes, multiMoviesRes] = await Promise.all([
-    castleJob, mdJob, vegaJob, movies4uJob, fourkHDHubJob, multiMoviesJob
+  const uhdMoviesJob = params.providers.includes('uhdmovies')
+    ? deadline(uhdMoviesModule.getStreamsLocal(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'uhdmovies')
+    : Promise.resolve({ provider: 'uhdmovies', data: [], error: null });
+  const [castleRes, mdRes, vegaRes, movies4uRes, fourkHDHubRes, multiMoviesRes, uhdMoviesRes] = await Promise.all([
+    castleJob, mdJob, vegaJob, movies4uJob, fourkHDHubJob, multiMoviesJob, uhdMoviesJob
   ]);
 
-  const directStreams = castleRes.data.map(stream => ({
-    ...stream,
-    provider: 'castle',
-    resolverType: 'direct'
-  }));
+  const directStreams = [
+    ...castleRes.data.map(stream => ({ ...stream, provider: 'castle', resolverType: 'direct' })),
+    ...uhdMoviesRes.data.map(stream => ({ ...stream, provider: 'UHDMovies', resolverType: 'direct' }))
+  ];
 
   const candidates = [...mdRes.data, ...vegaRes.data, ...movies4uRes.data, ...fourkHDHubRes.data, ...multiMoviesRes.data];
   const providerResult = (result) => ({
@@ -112,14 +116,15 @@ async function runWorkerDiscovery(params) {
   return {
     directStreams,
     candidates,
-    deviceProviders: params.providers.filter(provider => provider !== 'castle'),
+    deviceProviders: params.providers.filter(provider => !['castle', 'uhdmovies'].includes(provider)),
     providers: {
       castle: providerResult(castleRes),
       moviesdrive: providerResult(mdRes),
       vegamovies: providerResult(vegaRes),
       movies4u: providerResult(movies4uRes),
       '4khdhub': providerResult(fourkHDHubRes),
-      multimovies: providerResult(multiMoviesRes)
+      multimovies: providerResult(multiMoviesRes),
+      uhdmovies: providerResult(uhdMoviesRes)
     }
   };
 }
@@ -189,16 +194,17 @@ function parseRequest(url, env) {
   const type = normalizeType(url.searchParams.get('type'));
   const season = Number(url.searchParams.get('season') || 1);
   const episode = Number(url.searchParams.get('episode') || 1);
+  const allowedProviders = ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'castle', 'uhdmovies'];
   const requested = String(url.searchParams.get('providers') || 'moviesdrive,vegamovies,movies4u,4khdhub,multimovies,castle')
-    .toLowerCase().split(',').map(value => value.trim()).filter(value => ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'castle'].includes(value));
-  const configuredTimeout = Number(env?.PROVIDER_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+    .toLowerCase().split(',').map(value => value.trim()).filter(value => allowedProviders.includes(value));
+  const configuredTimeout = Number(url.searchParams.get('timeout') || env?.PROVIDER_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
   return {
     tmdbId,
     type,
     season,
     episode,
     providers: [...new Set(requested)],
-    timeout: Math.min(20000, Math.max(3000, configuredTimeout))
+    timeout: Math.min(45000, Math.max(3000, configuredTimeout))
   };
 }
 
@@ -230,7 +236,9 @@ async function cachedResponse(request, env, ctx, params) {
     providers: result.providers
   };
   const complete = params.providers.every(provider => result.providers[provider]?.status === 'success');
-  const cacheSeconds = complete ? CACHE_SECONDS : PARTIAL_CACHE_SECONDS;
+  const cacheSeconds = params.providers.includes('uhdmovies')
+    ? UHD_CACHE_SECONDS
+    : complete ? CACHE_SECONDS : PARTIAL_CACHE_SECONDS;
   const response = json(payload, 200, {
     'Cache-Control': `public, max-age=${cacheSeconds}`,
     'X-MNProviders-Cache': 'MISS'
@@ -245,7 +253,7 @@ export async function handleRequest(request, env = {}, ctx = {}) {
   const url = new URL(request.url);
   if (request.method !== 'GET') return json({ ok: false, error: 'GET only' }, 405);
   if (url.pathname === '/' || url.pathname === '/health') {
-    return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'castle'] });
+    return json({ ok: true, service: 'MNProviders Resolver', version: VERSION, providers: ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'castle', 'uhdmovies'] });
   }
   if (url.pathname === '/diagnostics') {
     return json({ ok: true, version: VERSION, probes: await diagnostics() }, 200, { 'Cache-Control': 'no-store' });

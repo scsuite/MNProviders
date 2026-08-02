@@ -1,9 +1,9 @@
 # MNProviders Cloudflare Resolver
 
-This Worker runs MoviesDrive, VegaMovies, and Castle in parallel, returns partial
-results when one provider times out, globally sorts every source by quality, and
-caches the final JSON response for six hours. Video bytes do not pass through the
-Worker.
+This Worker runs supported providers in parallel, including the complete UHDMovies
+Resume/Instant resolver. UHDMovies results are cached for five minutes because its
+Google media URLs are signed; other complete discovery results are cached for six
+hours. Video bytes do not pass through the Worker.
 
 ## Dashboard deployment
 
@@ -19,11 +19,12 @@ Examples:
 https://YOUR-WORKER.workers.dev/health
 https://YOUR-WORKER.workers.dev/streams?tmdbId=1402&type=tv&season=1&episode=1
 https://YOUR-WORKER.workers.dev/streams?tmdbId=1402&type=tv&season=1&episode=1&providers=moviesdrive
+https://YOUR-WORKER.workers.dev/streams?tmdbId=1124&type=movie&providers=uhdmovies&timeout=30000
 ```
 
 Optional Worker variables:
 
-- `PROVIDER_TIMEOUT_MS`: provider deadline, default `12000` (allowed 3000–20000).
+- `PROVIDER_TIMEOUT_MS`: provider deadline, default `8000` (allowed 3000–45000).
 - `RESOLVER_KEY`: when set, clients must send the same value in `X-Resolver-Key`.
 
 Do not enable `RESOLVER_KEY` until the Nuvio plugins have been configured to send

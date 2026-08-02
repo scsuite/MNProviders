@@ -1,6 +1,9 @@
 const assert = require('assert');
 
 (async () => {
+  const health = await handleHealth();
+  assert(health.providers.includes('uhdmovies'), 'Worker health must advertise UHDMovies support');
+
   const { handleRequest } = await import('../worker/src/index.js');
   const target = 'https://abc123.r2.cloudflarestorage.com/hub/file-token?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=a%2Bb%2Fc%3D';
   const request = new Request(`https://worker.test/media/file.mkv?url=${encodeURIComponent(target)}`);
@@ -21,3 +24,10 @@ const assert = require('assert');
   console.error('FAIL:', error);
   process.exit(1);
 });
+
+async function handleHealth() {
+  const { handleRequest } = await import('../worker/src/index.js');
+  const response = await handleRequest(new Request('https://worker.test/health'), {}, {});
+  assert.strictEqual(response.status, 200);
+  return response.json();
+}
