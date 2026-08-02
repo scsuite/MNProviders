@@ -1,11 +1,11 @@
 {
-  "name": "MNProviders MovieBox Experimental",
+  "name": "MNProviders MovieBox Runtime Test 104",
   "version": "1.0.4",
   "description": "Isolated MovieBox runtime compatibility test",
   "scrapers": [
     {
-      "id": "MovieBox",
-      "name": "MovieBox",
+      "id": "MovieBoxRuntimeTest104",
+      "name": "MovieBox Runtime Test 104",
       "description": "Temporary minimal runtime test before enabling signed MovieBox API requests",
       "version": "1.0.4",
       "author": "Phisher98; Nuvio compatibility port by scsuite",
