@@ -1157,6 +1157,31 @@ var require_streams = __commonJS({
   }
 });
 
+// src/shared/metadata.js
+var require_metadata = __commonJS({
+  "src/shared/metadata.js"(exports2, module2) {
+    var DOMAINS5 = require_domains();
+    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+    var cache = /* @__PURE__ */ new Map();
+    function getMetadata2(tmdbId, mediaType) {
+      const type = mediaType === "tv" ? "tv" : "movie";
+      const key = `${type}:${tmdbId}`;
+      if (!cache.has(key)) {
+        cache.set(key, fetch(`${DOMAINS5.TMDB_API}/${type}/${tmdbId}?api_key=${TMDB_KEY}&append_to_response=external_ids`).then((response) => response.ok ? response.json() : null).then((data) => {
+          var _a;
+          return data ? {
+            title: type === "tv" ? data.name : data.title,
+            year: Number(String(type === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null,
+            imdbId: ((_a = data.external_ids) == null ? void 0 : _a.imdb_id) || data.imdb_id || null
+          } : null;
+        }).catch(() => null));
+      }
+      return cache.get(key);
+    }
+    module2.exports = { getMetadata: getMetadata2 };
+  }
+});
+
 // src/providers/vegamovies.js
 var require_vegamovies = __commonJS({
   "src/providers/vegamovies.js"(exports2, module2) {
@@ -1164,7 +1189,7 @@ var require_vegamovies = __commonJS({
     var TMDB_API = DOMAINS5.TMDB_API;
     var { resolveVCloud } = require_vcloud();
     var { mapConcurrent: mapConcurrent3, uniqueExactStreams: uniqueExactStreams3 } = require_streams();
-    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+    var sharedMetadata2 = require_metadata();
     var DOMAINS_URL2 = DOMAINS5.PHISHER_DOMAINS;
     var VEGA_FALLBACK = DOMAINS5.VEGAMOVIES_FALLBACK;
     var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
@@ -1192,14 +1217,7 @@ var require_vegamovies = __commonJS({
     }
     function getMediaInfo(tmdbId, mediaType) {
       return __async(this, null, function* () {
-        const endpoint = mediaType === "tv" ? "tv" : "movie";
-        const url = `${TMDB_API}/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}&append_to_response=external_ids`;
-        const data = JSON.parse(yield requestText(url));
-        return {
-          title: mediaType === "tv" ? data.name : data.title,
-          year: Number(String(mediaType === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null,
-          imdbId: data.imdb_id || data.external_ids && data.external_ids.imdb_id || null
-        };
+        return sharedMetadata2.getMetadata(tmdbId, mediaType);
       });
     }
     function getVegaBase() {
@@ -1427,7 +1445,7 @@ var require_vegamovies = __commonJS({
 });
 
 // src/moviesdrive/constants.js
-var import_domains, MAIN_URL, HEADERS, TMDB_API_KEY;
+var import_domains, MAIN_URL, HEADERS;
 var init_constants = __esm({
   "src/moviesdrive/constants.js"() {
     import_domains = __toESM(require_domains());
@@ -1437,7 +1455,6 @@ var init_constants = __esm({
       "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
       "Referer": `${MAIN_URL}/`
     };
-    TMDB_API_KEY = "439c478a771f35c05022f9feabcca01c";
   }
 });
 
@@ -1797,12 +1814,7 @@ function normalizeType(value) {
 }
 function getMetadata(tmdbId, mediaType) {
   return __async(this, null, function* () {
-    var _a;
-    const response = yield fetch(`${import_domains3.default.TMDB_API}/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`, { headers: HEADERS });
-    if (!response.ok)
-      return null;
-    const data = yield response.json();
-    return { title: mediaType === "tv" ? data.name : data.title, imdbId: (_a = data.external_ids) == null ? void 0 : _a.imdb_id };
+    return import_metadata.default.getMetadata(tmdbId, mediaType);
   });
 }
 function coversSeason(document, season) {
@@ -2024,7 +2036,7 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
     }
   });
 }
-var import_cheerio_without_node_native2, import_streams, import_domains3, DOMAINS_URL, moviesdrive_default;
+var import_cheerio_without_node_native2, import_streams, import_domains3, import_metadata, DOMAINS_URL, moviesdrive_default;
 var init_moviesdrive = __esm({
   "src/moviesdrive/index.js"() {
     import_cheerio_without_node_native2 = __toESM(require("cheerio-without-node-native"));
@@ -2032,6 +2044,7 @@ var init_moviesdrive = __esm({
     init_extractor();
     import_streams = __toESM(require_streams());
     import_domains3 = __toESM(require_domains());
+    import_metadata = __toESM(require_metadata());
     DOMAINS_URL = import_domains3.default.PHISHER_DOMAINS;
     moviesdrive_default = { discoverCandidates, resolveCandidate, getStreams };
   }
@@ -2045,7 +2058,7 @@ var require_movies4u = __commonJS({
     var { mapConcurrent: mapConcurrent3, uniqueExactStreams: uniqueExactStreams3 } = require_streams();
     var moviesDrive = (init_moviesdrive(), __toCommonJS(moviesdrive_exports));
     var vegaMovies = require_vegamovies();
-    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+    var sharedMetadata2 = require_metadata();
     var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
     var HEADERS2 = { "User-Agent": USER_AGENT, Accept: "text/html,*/*;q=0.8", Cookie: "xla=s4t" };
     function text(url, referer) {
@@ -2072,12 +2085,7 @@ var require_movies4u = __commonJS({
     }
     function getMetadata2(tmdbId, mediaType) {
       return __async(this, null, function* () {
-        const endpoint = mediaType === "tv" ? "tv" : "movie";
-        const data = JSON.parse(yield text(`${DOMAINS5.TMDB_API}/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}`));
-        return {
-          title: mediaType === "tv" ? data.name : data.title,
-          year: Number(String(mediaType === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null
-        };
+        return sharedMetadata2.getMetadata(tmdbId, mediaType);
       });
     }
     function clean(value) {
@@ -2239,7 +2247,7 @@ var require_fourkHDhub = __commonJS({
     var DOMAINS5 = require_domains();
     var { mapConcurrent: mapConcurrent3, uniqueExactStreams: uniqueExactStreams3 } = require_streams();
     var moviesDrive = (init_moviesdrive(), __toCommonJS(moviesdrive_exports));
-    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+    var sharedMetadata2 = require_metadata();
     var HEADERS2 = {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
       Accept: "text/html,*/*;q=0.8"
@@ -2265,12 +2273,7 @@ var require_fourkHDhub = __commonJS({
     }
     function metadata(tmdbId, mediaType) {
       return __async(this, null, function* () {
-        const type = mediaType === "tv" ? "tv" : "movie";
-        const data = JSON.parse(yield text(`${DOMAINS5.TMDB_API}/${type}/${tmdbId}?api_key=${TMDB_KEY}`));
-        return {
-          title: type === "tv" ? data.name : data.title,
-          year: Number(String(type === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null
-        };
+        return sharedMetadata2.getMetadata(tmdbId, mediaType);
       });
     }
     var clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -2455,9 +2458,9 @@ var require_multimovies = __commonJS({
     var CryptoJS = require("crypto-js");
     var DOMAINS5 = require_domains();
     var { mapConcurrent: mapConcurrent3, parseMediaAttributes, uniqueExactStreams: uniqueExactStreams3 } = require_streams();
+    var sharedMetadata2 = require_metadata();
     var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36";
     var HEADERS2 = { "User-Agent": USER_AGENT, Accept: "text/html,*/*;q=0.8" };
-    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
     var API_KEY = CryptoJS.enc.Utf8.parse("kiemtienmua911ca");
     var API_IV = CryptoJS.enc.Utf8.parse("1234567890oiuytr");
     function text(_0) {
@@ -2481,9 +2484,7 @@ var require_multimovies = __commonJS({
     }
     function metadata(tmdbId, mediaType) {
       return __async(this, null, function* () {
-        const type = mediaType === "tv" ? "tv" : "movie";
-        const data = JSON.parse(yield text(`${DOMAINS5.TMDB_API}/${type}/${tmdbId}?api_key=${TMDB_KEY}`));
-        return { title: type === "tv" ? data.name : data.title, year: Number(String(type === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null };
+        return sharedMetadata2.getMetadata(tmdbId, mediaType);
       });
     }
     var clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -2659,7 +2660,7 @@ var require_hdhub4u = __commonJS({
     var DOMAINS5 = require_domains();
     var { mapConcurrent: mapConcurrent3, uniqueExactStreams: uniqueExactStreams3 } = require_streams();
     var moviesDrive = (init_moviesdrive(), __toCommonJS(moviesdrive_exports));
-    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+    var sharedMetadata2 = require_metadata();
     var HEADERS2 = {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36",
       Accept: "text/html,application/json;q=0.9,*/*;q=0.8"
@@ -2686,16 +2687,7 @@ var require_hdhub4u = __commonJS({
     }
     function metadata(tmdbId, mediaType) {
       return __async(this, null, function* () {
-        var _a;
-        const response = yield request(`${DOMAINS5.TMDB_API}/${mediaType}/${tmdbId}?api_key=${TMDB_KEY}&append_to_response=external_ids`);
-        if (!response.ok)
-          return null;
-        const data = yield response.json();
-        return {
-          title: mediaType === "tv" ? data.name : data.title,
-          year: Number(String(mediaType === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null,
-          imdbId: ((_a = data.external_ids) == null ? void 0 : _a.imdb_id) || null
-        };
+        return sharedMetadata2.getMetadata(tmdbId, mediaType);
       });
     }
     function qualityFrom(value) {
@@ -2927,7 +2919,10 @@ var { mapConcurrent: mapConcurrent2, uniqueExactStreams: uniqueExactStreams2 } =
 var DOMAINS4 = require_domains();
 var WORKER_BASE = DOMAINS4.WORKER;
 var CANDIDATE_TIMEOUT_MS = 4500;
+var DEVICE_DISCOVERY_TIMEOUT_MS = 6500;
+var FALLBACK_RESOLUTION_TIMEOUT_MS = 2500;
 var DEVICE_RESOLUTION_CONCURRENCY = 32;
+var DEVICE_PROVIDER_IDS = ["moviesdrive", "vegamovies", "movies4u", "4khdhub", "multimovies", "hdhub4u"];
 function withTimeout(promise, milliseconds = CANDIDATE_TIMEOUT_MS) {
   let timer;
   const timeout = new Promise((resolve) => {
@@ -3030,90 +3025,46 @@ function resolveDeviceCandidate(candidate) {
 function resolveCandidateBounded(candidate) {
   return withTimeout(resolveDeviceCandidate(candidate));
 }
+function resolveFallbackCandidate(candidate) {
+  return withTimeout(resolveDeviceCandidate(candidate), FALLBACK_RESOLUTION_TIMEOUT_MS);
+}
+function deviceDiscoverers() {
+  var _a, _b, _c, _d, _e, _f;
+  return {
+    moviesdrive: mdModule.discoverCandidates || ((_a = mdModule.default) == null ? void 0 : _a.discoverCandidates),
+    vegamovies: vegaModule.discoverCandidates || ((_b = vegaModule.default) == null ? void 0 : _b.discoverCandidates),
+    movies4u: movies4uModule.discoverCandidates || ((_c = movies4uModule.default) == null ? void 0 : _c.discoverCandidates),
+    "4khdhub": fourkHDHubModule.discoverCandidates || ((_d = fourkHDHubModule.default) == null ? void 0 : _d.discoverCandidates),
+    multimovies: multiMoviesModule.discoverCandidates || ((_e = multiMoviesModule.default) == null ? void 0 : _e.discoverCandidates),
+    hdhub4u: hdHub4uModule.discoverCandidates || ((_f = hdHub4uModule.default) == null ? void 0 : _f.discoverCandidates)
+  };
+}
+function discoverOnDevice(providerIds, tmdbId, mediaType, season, episode) {
+  return __async(this, null, function* () {
+    const discoverers = deviceDiscoverers();
+    const selected = [...new Set(providerIds)].filter((id) => DEVICE_PROVIDER_IDS.includes(id) && typeof discoverers[id] === "function");
+    const groups = yield Promise.all(selected.map((id) => withTimeout(
+      Promise.resolve(discoverers[id](tmdbId, mediaType, season, episode)).catch(() => []),
+      DEVICE_DISCOVERY_TIMEOUT_MS
+    )));
+    return groups.flat().filter((candidate) => candidate == null ? void 0 : candidate.url);
+  });
+}
 function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
   return __async(this, null, function* () {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
-    const discoverVega = vegaModule.discoverCandidates || ((_a = vegaModule.default) == null ? void 0 : _a.discoverCandidates);
-    const getVega = vegaModule.getStreams || ((_b = vegaModule.default) == null ? void 0 : _b.getStreams);
-    const discoverMovies4u = movies4uModule.discoverCandidates || ((_c = movies4uModule.default) == null ? void 0 : _c.discoverCandidates);
-    const getMovies4u = movies4uModule.getStreams || ((_d = movies4uModule.default) == null ? void 0 : _d.getStreams);
-    const discover4KHDHub = fourkHDHubModule.discoverCandidates || ((_e = fourkHDHubModule.default) == null ? void 0 : _e.discoverCandidates);
-    const get4KHDHub = fourkHDHubModule.getStreams || ((_f = fourkHDHubModule.default) == null ? void 0 : _f.getStreams);
-    const discoverMultiMovies = multiMoviesModule.discoverCandidates || ((_g = multiMoviesModule.default) == null ? void 0 : _g.discoverCandidates);
-    const getMultiMovies = multiMoviesModule.getStreams || ((_h = multiMoviesModule.default) == null ? void 0 : _h.getStreams);
-    const discoverHDHub4u = hdHub4uModule.discoverCandidates || ((_i = hdHub4uModule.default) == null ? void 0 : _i.discoverCandidates);
-    const getHDHub4u = hdHub4uModule.getStreams || ((_j = hdHub4uModule.default) == null ? void 0 : _j.getStreams);
-    const discoverMD = mdModule.discoverCandidates || ((_k = mdModule.default) == null ? void 0 : _k.discoverCandidates);
-    const getMD = mdModule.getStreams || ((_l = mdModule.default) == null ? void 0 : _l.getStreams);
-    const [castleResult, vegaResult, mdResult, movies4uResult, fourkHDHubResult, multiMoviesResult, hdHub4uResult] = yield Promise.allSettled([
-      typeof getCastleStreams === "function" ? getCastleStreams(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-      typeof discoverVega === "function" ? discoverVega(tmdbId, mediaType, season, episode) : typeof getVega === "function" ? getVega(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-      typeof discoverMD === "function" ? discoverMD(tmdbId, mediaType, season, episode) : typeof getMD === "function" ? getMD(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-      typeof discoverMovies4u === "function" ? discoverMovies4u(tmdbId, mediaType, season, episode) : typeof getMovies4u === "function" ? getMovies4u(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-      typeof discover4KHDHub === "function" ? discover4KHDHub(tmdbId, mediaType, season, episode) : typeof get4KHDHub === "function" ? get4KHDHub(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-      typeof discoverMultiMovies === "function" ? discoverMultiMovies(tmdbId, mediaType, season, episode) : typeof getMultiMovies === "function" ? getMultiMovies(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-      typeof discoverHDHub4u === "function" ? discoverHDHub4u(tmdbId, mediaType, season, episode) : typeof getHDHub4u === "function" ? getHDHub4u(tmdbId, mediaType, season, episode) : Promise.resolve([])
+    const [candidates, castleStreams] = yield Promise.all([
+      discoverOnDevice(DEVICE_PROVIDER_IDS, tmdbId, mediaType, season, episode),
+      withTimeout(typeof getCastleStreams === "function" ? getCastleStreams(tmdbId, mediaType, season, episode) : [], DEVICE_DISCOVERY_TIMEOUT_MS)
     ]);
-    const castleStreams = castleResult.status === "fulfilled" && Array.isArray(castleResult.value) ? castleResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "castle", source: s.source || s.name || "Castle" })) : [];
-    let vegaStreams = [];
-    if (vegaResult.status === "fulfilled" && Array.isArray(vegaResult.value)) {
-      if (typeof discoverVega === "function") {
-        const resolved = yield mapConcurrent2(vegaResult.value, 4, resolveCandidateBounded);
-        vegaStreams = resolved.flat().filter(Boolean);
-      } else {
-        vegaStreams = vegaResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "vegamovies" }));
-      }
-    }
-    let mdStreams = [];
-    if (mdResult.status === "fulfilled" && Array.isArray(mdResult.value)) {
-      if (typeof discoverMD === "function") {
-        const resolved = yield mapConcurrent2(mdResult.value, 4, resolveCandidateBounded);
-        mdStreams = resolved.flat().filter(Boolean);
-      } else {
-        mdStreams = mdResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "MoviesDrive" }));
-      }
-    }
-    let movies4uStreams = [];
-    if (movies4uResult.status === "fulfilled" && Array.isArray(movies4uResult.value)) {
-      if (typeof discoverMovies4u === "function") {
-        const resolved = yield mapConcurrent2(movies4uResult.value, 4, resolveCandidateBounded);
-        movies4uStreams = resolved.flat().filter(Boolean);
-      } else {
-        movies4uStreams = movies4uResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "Movies4u" }));
-      }
-    }
-    let fourkHDHubStreams = [];
-    if (fourkHDHubResult.status === "fulfilled" && Array.isArray(fourkHDHubResult.value)) {
-      if (typeof discover4KHDHub === "function") {
-        const resolved = yield mapConcurrent2(fourkHDHubResult.value, 4, resolveCandidateBounded);
-        fourkHDHubStreams = resolved.flat().filter(Boolean);
-      } else {
-        fourkHDHubStreams = fourkHDHubResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "4KHDHub" }));
-      }
-    }
-    let multiMoviesStreams = [];
-    if (multiMoviesResult.status === "fulfilled" && Array.isArray(multiMoviesResult.value)) {
-      if (typeof discoverMultiMovies === "function") {
-        const resolved = yield mapConcurrent2(multiMoviesResult.value, 4, resolveCandidateBounded);
-        multiMoviesStreams = resolved.flat().filter(Boolean);
-      } else {
-        multiMoviesStreams = multiMoviesResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "MultiMovies" }));
-      }
-    }
-    let hdHub4uStreams = [];
-    if (hdHub4uResult.status === "fulfilled" && Array.isArray(hdHub4uResult.value)) {
-      if (typeof discoverHDHub4u === "function") {
-        hdHub4uStreams = (yield mapConcurrent2(hdHub4uResult.value, 4, resolveCandidateBounded)).flat().filter(Boolean);
-      } else {
-        hdHub4uStreams = hdHub4uResult.value.map((s) => __spreadProps(__spreadValues({}, s), { provider: "HDHub4u" }));
-      }
-    }
-    return [...castleStreams, ...vegaStreams, ...mdStreams, ...movies4uStreams, ...fourkHDHubStreams, ...multiMoviesStreams, ...hdHub4uStreams];
+    const resolved = yield mapConcurrent2(candidates, DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded);
+    return [
+      ...Array.isArray(castleStreams) ? castleStreams.map((stream) => __spreadProps(__spreadValues({}, stream), { provider: "castle", source: stream.source || stream.name || "Castle" })) : [],
+      ...resolved.flat().filter(Boolean)
+    ];
   });
 }
 function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
-    var _a, _b, _c;
     if (!tmdbId || mediaType !== "movie" && mediaType !== "tv")
       return [];
     if (mediaType === "tv" && (!season || !episode))
@@ -3125,36 +3076,35 @@ function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
         provider: s.provider || "castle",
         source: s.source || s.name || "Castle"
       }));
-      const resolutionJob = mapConcurrent2(workerData.candidates || [], DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded);
-      const providerFallbackJobs = [];
-      const workerReported4KHDHub = workerData.providers && Object.prototype.hasOwnProperty.call(workerData.providers, "4khdhub");
-      const worker4KCount = Number(((_b = (_a = workerData.providers) == null ? void 0 : _a["4khdhub"]) == null ? void 0 : _b.count) || 0);
-      if (workerReported4KHDHub && worker4KCount === 0) {
-        const discover4KHDHub = fourkHDHubModule.discoverCandidates || ((_c = fourkHDHubModule.default) == null ? void 0 : _c.discoverCandidates);
-        if (typeof discover4KHDHub === "function") {
-          try {
-            providerFallbackJobs.push((() => __async(this, null, function* () {
-              const localCandidates = yield discover4KHDHub(tmdbId, mediaType, season, episode);
-              const localResolved = yield mapConcurrent2(localCandidates, 4, resolveCandidateBounded);
-              return localResolved.flat().filter(Boolean);
-            }))().catch(() => []));
-          } catch (_) {
-          }
-        }
-      }
-      const [resolvedCandidates, fallbackGroups] = yield Promise.all([
-        resolutionJob,
-        Promise.all(providerFallbackJobs)
-      ]);
+      const fallbackProviderIds = workerData.providers ? DEVICE_PROVIDER_IDS.filter((id) => {
+        const state = workerData.providers[id];
+        const failed = Boolean(state == null ? void 0 : state.error) || /^(blocked|timeout|error)$/i.test(String((state == null ? void 0 : state.status) || ""));
+        const devicePreferredEmpty = id === "4khdhub" && Number((state == null ? void 0 : state.count) || 0) === 0;
+        return !state || failed || devicePreferredEmpty;
+      }) : DEVICE_PROVIDER_IDS;
+      const workerResolutionJob = mapConcurrent2(workerData.candidates || [], DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded);
+      const localFallbackJob = (() => __async(this, null, function* () {
+        const localCandidates = yield discoverOnDevice(fallbackProviderIds, tmdbId, mediaType, season, episode);
+        return mapConcurrent2(localCandidates, DEVICE_RESOLUTION_CONCURRENCY, resolveFallbackCandidate);
+      }))();
+      const [workerResolved, localResolved] = yield Promise.all([workerResolutionJob, localFallbackJob]);
+      const resolvedCandidates = [...workerResolved, ...localResolved];
       rawStreams = [
         ...directStreams,
-        ...resolvedCandidates.flat().filter(Boolean),
-        ...fallbackGroups.flat().filter(Boolean)
+        ...resolvedCandidates.flat().filter(Boolean)
       ];
     } else {
-      rawStreams = yield runLocalDiscoveryFallback(tmdbId, mediaType, season, episode);
+      const deviceCandidates = yield discoverOnDevice(DEVICE_PROVIDER_IDS, tmdbId, mediaType, season, episode);
+      const [resolvedCandidates, castleStreams] = yield Promise.all([
+        mapConcurrent2(deviceCandidates, DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded),
+        withTimeout(typeof getCastleStreams === "function" ? getCastleStreams(tmdbId, mediaType, season, episode) : [], DEVICE_DISCOVERY_TIMEOUT_MS)
+      ]);
+      rawStreams = [
+        ...Array.isArray(castleStreams) ? castleStreams.map((stream) => __spreadProps(__spreadValues({}, stream), { provider: "castle", source: stream.source || stream.name || "Castle" })) : [],
+        ...resolvedCandidates.flat().filter(Boolean)
+      ];
     }
     return uniqueExactStreams2(rawStreams);
   });
 }
-module.exports = { getStreams: getStreams2, WORKER_BASE, fetchWorkerData, resolveDeviceCandidate, resolveCandidateBounded, runLocalDiscoveryFallback };
+module.exports = { getStreams: getStreams2, WORKER_BASE, fetchWorkerData, resolveDeviceCandidate, resolveCandidateBounded, discoverOnDevice, runLocalDiscoveryFallback };

@@ -2,6 +2,7 @@ const cheerio = require('cheerio-without-node-native');
 const DOMAINS = require('../config/domains');
 const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 const moviesDrive = require('../moviesdrive/index');
+const sharedMetadata = require('../shared/metadata');
 
 const TMDB_KEY = '439c478a771f35c05022f9feabcca01c';
 const HEADERS = {
@@ -24,14 +25,7 @@ async function getBaseUrl() {
   return DOMAINS.HDHUB4U_FALLBACK;
 }
 async function metadata(tmdbId, mediaType) {
-  const response = await request(`${DOMAINS.TMDB_API}/${mediaType}/${tmdbId}?api_key=${TMDB_KEY}&append_to_response=external_ids`);
-  if (!response.ok) return null;
-  const data = await response.json();
-  return {
-    title: mediaType === 'tv' ? data.name : data.title,
-    year: Number(String(mediaType === 'tv' ? data.first_air_date : data.release_date).slice(0, 4)) || null,
-    imdbId: data.external_ids?.imdb_id || null
-  };
+  return sharedMetadata.getMetadata(tmdbId, mediaType);
 }
 function qualityFrom(value) {
   const text = clean(value);

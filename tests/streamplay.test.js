@@ -28,6 +28,11 @@ global.fetch = async (url, options) => {
             source: 'Castle'
           }
         ],
+        deviceProviders: ['vegamovies', 'moviesdrive'],
+        providers: {
+          vegamovies: { count: 1, status: 'success', error: null },
+          moviesdrive: { count: 1, status: 'success', error: null }
+        },
         candidates: [
           {
             provider: 'vegamovies',
@@ -60,7 +65,10 @@ require.cache[vegaResolved] = {
   exports: {
     discoverCandidates: async () => {
       localVegaDiscoverCalled = true;
-      return [];
+      return [{
+        provider: 'vegamovies', source: 'FastDL', quality: '4K',
+        url: 'https://fastdl.test/device_movie4k', resolverType: 'fastdl'
+      }];
     },
     resolveCandidate: async (candidate) => [{
       name: `VegaMovies ${candidate.source} - ${candidate.quality}`,
@@ -80,7 +88,10 @@ require.cache[mdResolved] = {
   exports: {
     discoverCandidates: async () => {
       localMDDiscoverCalled = true;
-      return [];
+      return [{
+        provider: 'MoviesDrive', source: 'HubCloud', quality: '720p',
+        url: 'https://hubcloud.test/device_720', resolverType: 'hubcloud'
+      }];
     },
     resolveCandidate: async (candidate) => [{
       name: `MoviesDrive ${candidate.source} - ${candidate.quality}`,
@@ -108,6 +119,21 @@ require.cache[castleResolved] = {
   }
 };
 
+for (const modulePath of [
+  '../src/providers/movies4u',
+  '../src/providers/fourkHDhub',
+  '../src/providers/multimovies',
+  '../src/providers/hdhub4u'
+]) {
+  const resolved = require.resolve(modulePath);
+  require.cache[resolved] = {
+    id: resolved,
+    filename: resolved,
+    loaded: true,
+    exports: { discoverCandidates: async () => [], resolveCandidate: async () => [] }
+  };
+}
+
 const { getStreams } = require('../src/providers/streamplay');
 
 (async () => {
@@ -121,14 +147,14 @@ const { getStreams } = require('../src/providers/streamplay');
   assert(workerUrlCalled && workerUrlCalled.includes('salman-sohail93.workers.dev/streams'), 'Worker endpoint should be called');
   console.log('PASS: Worker endpoint was called:', workerUrlCalled);
 
-  assert.strictEqual(localVegaDiscoverCalled, false, 'Local Vega discoverCandidates should NOT be called on Worker success');
-  assert.strictEqual(localMDDiscoverCalled, false, 'Local MoviesDrive discoverCandidates should NOT be called on Worker success');
-  console.log('PASS: Local discoverCandidates was skipped on Worker success');
+  assert.strictEqual(localVegaDiscoverCalled, false, 'Successful Worker Vega discovery should not repeat locally');
+  assert.strictEqual(localMDDiscoverCalled, false, 'Successful Worker MoviesDrive discovery should not repeat locally');
+  console.log('PASS: Successful Worker providers skipped duplicate device discovery');
 
   assert.strictEqual(streams.length, 3, `Expected 3 total streams (1 Castle direct + 2 resolved candidates), got ${streams.length}`);
   const castleStream = streams.find(s => s.provider === 'castle');
   assert(castleStream && castleStream.url === 'https://cdn.castle.test/stream.m3u8', 'Direct Castle stream should be preserved without re-resolution');
-  console.log('PASS: Direct Castle streams preserved & all candidates resolved');
+  console.log('PASS: Direct Castle stream preserved & device candidates resolved');
 
   const qualities = streams.map(s => s.quality);
   assert.deepStrictEqual(qualities, ['4K', '1080p', '720p'], `Expected qualities ['4K', '1080p', '720p'], got ${JSON.stringify(qualities)}`);

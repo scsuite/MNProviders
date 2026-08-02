@@ -7,8 +7,8 @@ import hdHub4uModule from '../../src/providers/hdhub4u.js';
 import castleModule from '../../src/providers/castle.js';
 import domainConfig from '../../src/config/domains.js';
 
-const VERSION = '1.0.12';
-const DEFAULT_TIMEOUT_MS = 12000;
+const VERSION = '1.0.13';
+const DEFAULT_TIMEOUT_MS = 8000;
 const CACHE_SECONDS = 21600;
 const PARTIAL_CACHE_SECONDS = 300;
 
@@ -81,27 +81,24 @@ async function runWorkerDiscovery(params) {
   const mdJob = params.providers.includes('moviesdrive')
     ? deadline(moviesDriveModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'moviesdrive')
     : Promise.resolve({ provider: 'moviesdrive', data: [], error: null });
-
   const vegaJob = params.providers.includes('vegamovies')
     ? deadline(vegaMoviesModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'vegamovies')
     : Promise.resolve({ provider: 'vegamovies', data: [], error: null });
-
   const movies4uJob = params.providers.includes('movies4u')
     ? deadline(movies4uModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'movies4u')
     : Promise.resolve({ provider: 'movies4u', data: [], error: null });
-
   const fourkHDHubJob = params.providers.includes('4khdhub')
     ? deadline(fourkHDHubModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, '4khdhub')
     : Promise.resolve({ provider: '4khdhub', data: [], error: null });
-
   const multiMoviesJob = params.providers.includes('multimovies')
-    ? deadline(multiMoviesModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), Math.max(params.timeout, 20000), 'multimovies')
+    ? deadline(multiMoviesModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'multimovies')
     : Promise.resolve({ provider: 'multimovies', data: [], error: null });
   const hdHub4uJob = params.providers.includes('hdhub4u')
     ? deadline(hdHub4uModule.discoverCandidates(params.tmdbId, params.type, params.season, params.episode), params.timeout, 'hdhub4u')
     : Promise.resolve({ provider: 'hdhub4u', data: [], error: null });
-
-  const [castleRes, mdRes, vegaRes, movies4uRes, fourkHDHubRes, multiMoviesRes, hdHub4uRes] = await Promise.all([castleJob, mdJob, vegaJob, movies4uJob, fourkHDHubJob, multiMoviesJob, hdHub4uJob]);
+  const [castleRes, mdRes, vegaRes, movies4uRes, fourkHDHubRes, multiMoviesRes, hdHub4uRes] = await Promise.all([
+    castleJob, mdJob, vegaJob, movies4uJob, fourkHDHubJob, multiMoviesJob, hdHub4uJob
+  ]);
 
   const directStreams = castleRes.data.map(stream => ({
     ...stream,
@@ -110,18 +107,24 @@ async function runWorkerDiscovery(params) {
   }));
 
   const candidates = [...mdRes.data, ...vegaRes.data, ...movies4uRes.data, ...fourkHDHubRes.data, ...multiMoviesRes.data, ...hdHub4uRes.data];
+  const providerResult = (result) => ({
+    count: result.data.length,
+    error: result.error,
+    status: result.error ? (/timeout/i.test(result.error) ? 'timeout' : 'error') : result.data.length ? 'success' : 'empty'
+  });
 
   return {
     directStreams,
     candidates,
+    deviceProviders: params.providers.filter(provider => provider !== 'castle'),
     providers: {
-      castle: { count: castleRes.data.length, error: castleRes.error },
-      moviesdrive: { count: mdRes.data.length, error: mdRes.error },
-      vegamovies: { count: vegaRes.data.length, error: vegaRes.error },
-      movies4u: { count: movies4uRes.data.length, error: movies4uRes.error },
-      '4khdhub': { count: fourkHDHubRes.data.length, error: fourkHDHubRes.error },
-      multimovies: { count: multiMoviesRes.data.length, error: multiMoviesRes.error },
-      hdhub4u: { count: hdHub4uRes.data.length, error: hdHub4uRes.error }
+      castle: providerResult(castleRes),
+      moviesdrive: providerResult(mdRes),
+      vegamovies: providerResult(vegaRes),
+      movies4u: providerResult(movies4uRes),
+      '4khdhub': providerResult(fourkHDHubRes),
+      multimovies: providerResult(multiMoviesRes),
+      hdhub4u: providerResult(hdHub4uRes)
     }
   };
 }
@@ -228,9 +231,10 @@ async function cachedResponse(request, env, ctx, params) {
     count: totalCount,
     directStreams: result.directStreams,
     candidates: result.candidates,
+    deviceProviders: result.deviceProviders,
     providers: result.providers
   };
-  const complete = params.providers.every(provider => (result.providers[provider]?.count || 0) > 0);
+  const complete = params.providers.every(provider => result.providers[provider]?.status === 'success');
   const cacheSeconds = complete ? CACHE_SECONDS : PARTIAL_CACHE_SECONDS;
   const response = json(payload, 200, {
     'Cache-Control': `public, max-age=${cacheSeconds}`,

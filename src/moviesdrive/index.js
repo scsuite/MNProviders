@@ -3,6 +3,7 @@ import { HEADERS, MAIN_URL, TMDB_API_KEY } from './constants.js';
 import { expandMovieButton, extractHost } from './extractor.js';
 import { mapConcurrent, uniqueExactStreams } from '../shared/streams.js';
 import DOMAINS from '../config/domains.js';
+import sharedMetadata from '../shared/metadata.js';
 
 const DOMAINS_URL = DOMAINS.PHISHER_DOMAINS;
 
@@ -11,10 +12,7 @@ function normalizeType(value) {
 }
 
 async function getMetadata(tmdbId, mediaType) {
-  const response = await fetch(`${DOMAINS.TMDB_API}/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`, { headers: HEADERS });
-  if (!response.ok) return null;
-  const data = await response.json();
-  return { title: mediaType === 'tv' ? data.name : data.title, imdbId: data.external_ids?.imdb_id };
+  return sharedMetadata.getMetadata(tmdbId, mediaType);
 }
 
 function coversSeason(document, season) {

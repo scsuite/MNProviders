@@ -2,6 +2,7 @@ const DOMAINS = require('../config/domains');
 const TMDB_API = DOMAINS.TMDB_API;
 const { resolveVCloud } = require('./vcloud');
 const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
+const sharedMetadata = require('../shared/metadata');
 const TMDB_KEY = '439c478a771f35c05022f9feabcca01c';
 const DOMAINS_URL = DOMAINS.PHISHER_DOMAINS;
 const VEGA_FALLBACK = DOMAINS.VEGAMOVIES_FALLBACK;
@@ -27,14 +28,7 @@ async function requestText(url, referer) {
 }
 
 async function getMediaInfo(tmdbId, mediaType) {
-  const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
-  const url = `${TMDB_API}/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}&append_to_response=external_ids`;
-  const data = JSON.parse(await requestText(url));
-  return {
-    title: mediaType === 'tv' ? data.name : data.title,
-    year: Number(String(mediaType === 'tv' ? data.first_air_date : data.release_date).slice(0, 4)) || null,
-    imdbId: data.imdb_id || (data.external_ids && data.external_ids.imdb_id) || null
-  };
+  return sharedMetadata.getMetadata(tmdbId, mediaType);
 }
 
 async function getVegaBase() {

@@ -2,6 +2,7 @@ const cheerio = require('cheerio-without-node-native');
 const DOMAINS = require('../config/domains');
 const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 const moviesDrive = require('../moviesdrive/index');
+const sharedMetadata = require('../shared/metadata');
 
 const TMDB_KEY = '439c478a771f35c05022f9feabcca01c';
 const HEADERS = {
@@ -24,12 +25,7 @@ async function getBaseUrl() {
 }
 
 async function metadata(tmdbId, mediaType) {
-  const type = mediaType === 'tv' ? 'tv' : 'movie';
-  const data = JSON.parse(await text(`${DOMAINS.TMDB_API}/${type}/${tmdbId}?api_key=${TMDB_KEY}`));
-  return {
-    title: type === 'tv' ? data.name : data.title,
-    year: Number(String(type === 'tv' ? data.first_air_date : data.release_date).slice(0, 4)) || null
-  };
+  return sharedMetadata.getMetadata(tmdbId, mediaType);
 }
 
 const clean = value => String(value || '').replace(/\s+/g, ' ').trim();

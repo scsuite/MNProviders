@@ -10,7 +10,10 @@ const DOMAINS = require('../config/domains');
 
 const WORKER_BASE = DOMAINS.WORKER;
 const CANDIDATE_TIMEOUT_MS = 4500;
+const DEVICE_DISCOVERY_TIMEOUT_MS = 6500;
+const FALLBACK_RESOLUTION_TIMEOUT_MS = 2500;
 const DEVICE_RESOLUTION_CONCURRENCY = 32;
+const DEVICE_PROVIDER_IDS = ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'hdhub4u'];
 
 function withTimeout(promise, milliseconds = CANDIDATE_TIMEOUT_MS) {
   let timer;
@@ -115,95 +118,41 @@ function resolveCandidateBounded(candidate) {
   return withTimeout(resolveDeviceCandidate(candidate));
 }
 
+function resolveFallbackCandidate(candidate) {
+  return withTimeout(resolveDeviceCandidate(candidate), FALLBACK_RESOLUTION_TIMEOUT_MS);
+}
+
+function deviceDiscoverers() {
+  return {
+    moviesdrive: mdModule.discoverCandidates || mdModule.default?.discoverCandidates,
+    vegamovies: vegaModule.discoverCandidates || vegaModule.default?.discoverCandidates,
+    movies4u: movies4uModule.discoverCandidates || movies4uModule.default?.discoverCandidates,
+    '4khdhub': fourkHDHubModule.discoverCandidates || fourkHDHubModule.default?.discoverCandidates,
+    multimovies: multiMoviesModule.discoverCandidates || multiMoviesModule.default?.discoverCandidates,
+    hdhub4u: hdHub4uModule.discoverCandidates || hdHub4uModule.default?.discoverCandidates
+  };
+}
+
+async function discoverOnDevice(providerIds, tmdbId, mediaType, season, episode) {
+  const discoverers = deviceDiscoverers();
+  const selected = [...new Set(providerIds)].filter(id => DEVICE_PROVIDER_IDS.includes(id) && typeof discoverers[id] === 'function');
+  const groups = await Promise.all(selected.map(id => withTimeout(
+    Promise.resolve(discoverers[id](tmdbId, mediaType, season, episode)).catch(() => []),
+    DEVICE_DISCOVERY_TIMEOUT_MS
+  )));
+  return groups.flat().filter(candidate => candidate?.url);
+}
+
 async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
-  const discoverVega = vegaModule.discoverCandidates || vegaModule.default?.discoverCandidates;
-  const getVega = vegaModule.getStreams || vegaModule.default?.getStreams;
-  const discoverMovies4u = movies4uModule.discoverCandidates || movies4uModule.default?.discoverCandidates;
-  const getMovies4u = movies4uModule.getStreams || movies4uModule.default?.getStreams;
-  const discover4KHDHub = fourkHDHubModule.discoverCandidates || fourkHDHubModule.default?.discoverCandidates;
-  const get4KHDHub = fourkHDHubModule.getStreams || fourkHDHubModule.default?.getStreams;
-  const discoverMultiMovies = multiMoviesModule.discoverCandidates || multiMoviesModule.default?.discoverCandidates;
-  const getMultiMovies = multiMoviesModule.getStreams || multiMoviesModule.default?.getStreams;
-  const discoverHDHub4u = hdHub4uModule.discoverCandidates || hdHub4uModule.default?.discoverCandidates;
-  const getHDHub4u = hdHub4uModule.getStreams || hdHub4uModule.default?.getStreams;
-
-  const discoverMD = mdModule.discoverCandidates || mdModule.default?.discoverCandidates;
-  const getMD = mdModule.getStreams || mdModule.default?.getStreams;
-
-  const [castleResult, vegaResult, mdResult, movies4uResult, fourkHDHubResult, multiMoviesResult, hdHub4uResult] = await Promise.allSettled([
-    typeof getCastleStreams === 'function' ? getCastleStreams(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-    typeof discoverVega === 'function' ? discoverVega(tmdbId, mediaType, season, episode) : typeof getVega === 'function' ? getVega(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-    typeof discoverMD === 'function' ? discoverMD(tmdbId, mediaType, season, episode) : typeof getMD === 'function' ? getMD(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-    typeof discoverMovies4u === 'function' ? discoverMovies4u(tmdbId, mediaType, season, episode) : typeof getMovies4u === 'function' ? getMovies4u(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-    typeof discover4KHDHub === 'function' ? discover4KHDHub(tmdbId, mediaType, season, episode) : typeof get4KHDHub === 'function' ? get4KHDHub(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-    typeof discoverMultiMovies === 'function' ? discoverMultiMovies(tmdbId, mediaType, season, episode) : typeof getMultiMovies === 'function' ? getMultiMovies(tmdbId, mediaType, season, episode) : Promise.resolve([]),
-    typeof discoverHDHub4u === 'function' ? discoverHDHub4u(tmdbId, mediaType, season, episode) : typeof getHDHub4u === 'function' ? getHDHub4u(tmdbId, mediaType, season, episode) : Promise.resolve([])
+  const [candidates, castleStreams] = await Promise.all([
+    discoverOnDevice(DEVICE_PROVIDER_IDS, tmdbId, mediaType, season, episode),
+    withTimeout(typeof getCastleStreams === 'function' ? getCastleStreams(tmdbId, mediaType, season, episode) : [], DEVICE_DISCOVERY_TIMEOUT_MS)
   ]);
-
-  const castleStreams = castleResult.status === 'fulfilled' && Array.isArray(castleResult.value)
-    ? castleResult.value.map(s => ({ ...s, provider: 'castle', source: s.source || s.name || 'Castle' }))
-    : [];
-
-  let vegaStreams = [];
-  if (vegaResult.status === 'fulfilled' && Array.isArray(vegaResult.value)) {
-    if (typeof discoverVega === 'function') {
-      const resolved = await mapConcurrent(vegaResult.value, 4, resolveCandidateBounded);
-      vegaStreams = resolved.flat().filter(Boolean);
-    } else {
-      vegaStreams = vegaResult.value.map(s => ({ ...s, provider: 'vegamovies' }));
-    }
-  }
-
-  let mdStreams = [];
-  if (mdResult.status === 'fulfilled' && Array.isArray(mdResult.value)) {
-    if (typeof discoverMD === 'function') {
-      const resolved = await mapConcurrent(mdResult.value, 4, resolveCandidateBounded);
-      mdStreams = resolved.flat().filter(Boolean);
-    } else {
-      mdStreams = mdResult.value.map(s => ({ ...s, provider: 'MoviesDrive' }));
-    }
-  }
-
-  let movies4uStreams = [];
-  if (movies4uResult.status === 'fulfilled' && Array.isArray(movies4uResult.value)) {
-    if (typeof discoverMovies4u === 'function') {
-      const resolved = await mapConcurrent(movies4uResult.value, 4, resolveCandidateBounded);
-      movies4uStreams = resolved.flat().filter(Boolean);
-    } else {
-      movies4uStreams = movies4uResult.value.map(s => ({ ...s, provider: 'Movies4u' }));
-    }
-  }
-
-  let fourkHDHubStreams = [];
-  if (fourkHDHubResult.status === 'fulfilled' && Array.isArray(fourkHDHubResult.value)) {
-    if (typeof discover4KHDHub === 'function') {
-      const resolved = await mapConcurrent(fourkHDHubResult.value, 4, resolveCandidateBounded);
-      fourkHDHubStreams = resolved.flat().filter(Boolean);
-    } else {
-      fourkHDHubStreams = fourkHDHubResult.value.map(s => ({ ...s, provider: '4KHDHub' }));
-    }
-  }
-
-  let multiMoviesStreams = [];
-  if (multiMoviesResult.status === 'fulfilled' && Array.isArray(multiMoviesResult.value)) {
-    if (typeof discoverMultiMovies === 'function') {
-      const resolved = await mapConcurrent(multiMoviesResult.value, 4, resolveCandidateBounded);
-      multiMoviesStreams = resolved.flat().filter(Boolean);
-    } else {
-      multiMoviesStreams = multiMoviesResult.value.map(s => ({ ...s, provider: 'MultiMovies' }));
-    }
-  }
-
-  let hdHub4uStreams = [];
-  if (hdHub4uResult.status === 'fulfilled' && Array.isArray(hdHub4uResult.value)) {
-    if (typeof discoverHDHub4u === 'function') {
-      hdHub4uStreams = (await mapConcurrent(hdHub4uResult.value, 4, resolveCandidateBounded)).flat().filter(Boolean);
-    } else {
-      hdHub4uStreams = hdHub4uResult.value.map(s => ({ ...s, provider: 'HDHub4u' }));
-    }
-  }
-
-  return [...castleStreams, ...vegaStreams, ...mdStreams, ...movies4uStreams, ...fourkHDHubStreams, ...multiMoviesStreams, ...hdHub4uStreams];
+  const resolved = await mapConcurrent(candidates, DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded);
+  return [
+    ...(Array.isArray(castleStreams) ? castleStreams.map(stream => ({ ...stream, provider: 'castle', source: stream.source || stream.name || 'Castle' })) : []),
+    ...resolved.flat().filter(Boolean)
+  ];
 }
 
 async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
@@ -220,45 +169,40 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
       source: s.source || s.name || 'Castle'
     }));
 
-    // Nuvio imposes an addon response deadline. Resolve the Worker-discovered
-    // queue in a wide bounded batch so dead hosts cannot push an otherwise
-    // valid response beyond that deadline.
-    const resolutionJob = mapConcurrent(workerData.candidates || [], DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded);
-    const providerFallbackJobs = [];
-
-    // Some sites allow the user device but block Cloudflare Worker IPs. An
-    // empty provider result must not suppress that provider's local fallback.
-    const workerReported4KHDHub = workerData.providers && Object.prototype.hasOwnProperty.call(workerData.providers, '4khdhub');
-    const worker4KCount = Number(workerData.providers?.['4khdhub']?.count || 0);
-    if (workerReported4KHDHub && worker4KCount === 0) {
-      const discover4KHDHub = fourkHDHubModule.discoverCandidates || fourkHDHubModule.default?.discoverCandidates;
-      if (typeof discover4KHDHub === 'function') {
-        try {
-          providerFallbackJobs.push((async () => {
-            const localCandidates = await discover4KHDHub(tmdbId, mediaType, season, episode);
-            const localResolved = await mapConcurrent(localCandidates, 4, resolveCandidateBounded);
-            return localResolved.flat().filter(Boolean);
-          })().catch(() => []));
-        } catch (_) {}
-      }
-    }
-
-    // A successful zero MultiMovies result means the title is absent. Retrying
-    // its long discovery flow on-device only repeats the same work.
-    const [resolvedCandidates, fallbackGroups] = await Promise.all([
-      resolutionJob,
-      Promise.all(providerFallbackJobs)
-    ]);
+    const fallbackProviderIds = workerData.providers
+      ? DEVICE_PROVIDER_IDS.filter(id => {
+          const state = workerData.providers[id];
+          const failed = Boolean(state?.error) || /^(blocked|timeout|error)$/i.test(String(state?.status || ''));
+          const devicePreferredEmpty = id === '4khdhub' && Number(state?.count || 0) === 0;
+          return !state || failed || devicePreferredEmpty;
+        })
+      : DEVICE_PROVIDER_IDS;
+    // Successful Worker discovery remains fast. Only empty/blocked/error
+    // providers repeat discovery on the current device's network IP.
+    const workerResolutionJob = mapConcurrent(workerData.candidates || [], DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded);
+    const localFallbackJob = (async () => {
+      const localCandidates = await discoverOnDevice(fallbackProviderIds, tmdbId, mediaType, season, episode);
+      return mapConcurrent(localCandidates, DEVICE_RESOLUTION_CONCURRENCY, resolveFallbackCandidate);
+    })();
+    const [workerResolved, localResolved] = await Promise.all([workerResolutionJob, localFallbackJob]);
+    const resolvedCandidates = [...workerResolved, ...localResolved];
     rawStreams = [
       ...directStreams,
-      ...resolvedCandidates.flat().filter(Boolean),
-      ...fallbackGroups.flat().filter(Boolean)
+      ...resolvedCandidates.flat().filter(Boolean)
     ];
   } else {
-    rawStreams = await runLocalDiscoveryFallback(tmdbId, mediaType, season, episode);
+    const deviceCandidates = await discoverOnDevice(DEVICE_PROVIDER_IDS, tmdbId, mediaType, season, episode);
+    const [resolvedCandidates, castleStreams] = await Promise.all([
+      mapConcurrent(deviceCandidates, DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded),
+      withTimeout(typeof getCastleStreams === 'function' ? getCastleStreams(tmdbId, mediaType, season, episode) : [], DEVICE_DISCOVERY_TIMEOUT_MS)
+    ]);
+    rawStreams = [
+      ...(Array.isArray(castleStreams) ? castleStreams.map(stream => ({ ...stream, provider: 'castle', source: stream.source || stream.name || 'Castle' })) : []),
+      ...resolvedCandidates.flat().filter(Boolean)
+    ];
   }
 
   return uniqueExactStreams(rawStreams);
 }
 
-module.exports = { getStreams, WORKER_BASE, fetchWorkerData, resolveDeviceCandidate, resolveCandidateBounded, runLocalDiscoveryFallback };
+module.exports = { getStreams, WORKER_BASE, fetchWorkerData, resolveDeviceCandidate, resolveCandidateBounded, discoverOnDevice, runLocalDiscoveryFallback };

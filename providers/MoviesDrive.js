@@ -521,6 +521,31 @@ var require_streams = __commonJS({
   }
 });
 
+// src/shared/metadata.js
+var require_metadata = __commonJS({
+  "src/shared/metadata.js"(exports, module2) {
+    var DOMAINS4 = require_domains();
+    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+    var cache = /* @__PURE__ */ new Map();
+    function getMetadata2(tmdbId, mediaType) {
+      const type = mediaType === "tv" ? "tv" : "movie";
+      const key = `${type}:${tmdbId}`;
+      if (!cache.has(key)) {
+        cache.set(key, fetch(`${DOMAINS4.TMDB_API}/${type}/${tmdbId}?api_key=${TMDB_KEY}&append_to_response=external_ids`).then((response) => response.ok ? response.json() : null).then((data) => {
+          var _a;
+          return data ? {
+            title: type === "tv" ? data.name : data.title,
+            year: Number(String(type === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null,
+            imdbId: ((_a = data.external_ids) == null ? void 0 : _a.imdb_id) || data.imdb_id || null
+          } : null;
+        }).catch(() => null));
+      }
+      return cache.get(key);
+    }
+    module2.exports = { getMetadata: getMetadata2 };
+  }
+});
+
 // src/moviesdrive/index.js
 var moviesdrive_exports = {};
 __export(moviesdrive_exports, {
@@ -540,7 +565,6 @@ var HEADERS = {
   "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
   "Referer": `${MAIN_URL}/`
 };
-var TMDB_API_KEY = "439c478a771f35c05022f9feabcca01c";
 
 // src/moviesdrive/extractor.js
 var import_cheerio_without_node_native = __toESM(require("cheerio-without-node-native"));
@@ -882,18 +906,14 @@ function extractHost(url, referer, hint = {}) {
 // src/moviesdrive/index.js
 var import_streams = __toESM(require_streams());
 var import_domains3 = __toESM(require_domains());
+var import_metadata = __toESM(require_metadata());
 var DOMAINS_URL = import_domains3.default.PHISHER_DOMAINS;
 function normalizeType(value) {
   return /^(tv|series|show)$/i.test(String(value || "")) ? "tv" : "movie";
 }
 function getMetadata(tmdbId, mediaType) {
   return __async(this, null, function* () {
-    var _a;
-    const response = yield fetch(`${import_domains3.default.TMDB_API}/${mediaType}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`, { headers: HEADERS });
-    if (!response.ok)
-      return null;
-    const data = yield response.json();
-    return { title: mediaType === "tv" ? data.name : data.title, imdbId: (_a = data.external_ids) == null ? void 0 : _a.imdb_id };
+    return import_metadata.default.getMetadata(tmdbId, mediaType);
   });
 }
 function coversSeason(document, season) {

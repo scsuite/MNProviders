@@ -3,6 +3,7 @@ const DOMAINS = require('../config/domains');
 const { mapConcurrent, uniqueExactStreams } = require('../shared/streams');
 const moviesDrive = require('../moviesdrive/index');
 const vegaMovies = require('./vegamovies');
+const sharedMetadata = require('../shared/metadata');
 
 const TMDB_KEY = '439c478a771f35c05022f9feabcca01c';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -26,12 +27,7 @@ async function getBaseUrl() {
 }
 
 async function getMetadata(tmdbId, mediaType) {
-  const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
-  const data = JSON.parse(await text(`${DOMAINS.TMDB_API}/${endpoint}/${tmdbId}?api_key=${TMDB_KEY}`));
-  return {
-    title: mediaType === 'tv' ? data.name : data.title,
-    year: Number(String(mediaType === 'tv' ? data.first_air_date : data.release_date).slice(0, 4)) || null
-  };
+  return sharedMetadata.getMetadata(tmdbId, mediaType);
 }
 
 function clean(value) {
