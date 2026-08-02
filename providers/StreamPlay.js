@@ -2723,6 +2723,30 @@ var require_hdhub4u = __commonJS({
     }
     function search2(info, base, mediaType, season) {
       return __async(this, null, function* () {
+        const query = mediaType === "tv" ? `${info.title} Season ${season}` : info.title;
+        try {
+          const response2 = yield request(`${base}/search/${encodeURIComponent(query)}/`, base);
+          if (response2.ok) {
+            const $ = cheerio3.load(yield response2.text());
+            const target = normalized(info.title);
+            const seasonPattern2 = new RegExp(`(?:season[ ._/-]*|\\bs)0?${season}(?:\\D|$)`, "i");
+            const results = $("a[href]").map((_, anchor) => {
+              const node = $(anchor);
+              const title2 = clean(node.text() || node.attr("title"));
+              const url = absolute(node.attr("href"), response2.url || base);
+              return { title: title2, url };
+            }).get().filter((item) => {
+              if (!item.title || !item.url || !item.url.startsWith(`${base}/`))
+                return false;
+              const name = normalized(item.title);
+              return name === target || name.startsWith(`${target} `);
+            });
+            const selected2 = results.find((item) => mediaType === "tv" && seasonPattern2.test(`${item.title} ${item.url}`)) || results.find((item) => info.year && item.title.includes(String(info.year))) || results[0];
+            if (selected2 == null ? void 0 : selected2.url)
+              return selected2.url;
+          }
+        } catch (_) {
+        }
         const params = new URLSearchParams({
           q: info.title,
           query_by: "post_title,category,stars,director,imdb_id",

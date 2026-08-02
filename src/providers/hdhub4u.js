@@ -46,6 +46,31 @@ function rot13(value) {
 }
 
 async function search(info, base, mediaType, season) {
+  const query = mediaType === 'tv' ? `${info.title} Season ${season}` : info.title;
+  try {
+    const response = await request(`${base}/search/${encodeURIComponent(query)}/`, base);
+    if (response.ok) {
+      const $ = cheerio.load(await response.text());
+      const target = normalized(info.title);
+      const seasonPattern = new RegExp(`(?:season[ ._/-]*|\\bs)0?${season}(?:\\D|$)`, 'i');
+      const results = $('a[href]').map((_, anchor) => {
+        const node = $(anchor);
+        const title = clean(node.text() || node.attr('title'));
+        const url = absolute(node.attr('href'), response.url || base);
+        return { title, url };
+      }).get().filter(item => {
+        if (!item.title || !item.url || !item.url.startsWith(`${base}/`)) return false;
+        const name = normalized(item.title);
+        return name === target || name.startsWith(`${target} `);
+      });
+      const selected = results.find(item => mediaType === 'tv' && seasonPattern.test(`${item.title} ${item.url}`))
+        || results.find(item => info.year && item.title.includes(String(info.year)))
+        || results[0];
+      if (selected?.url) return selected.url;
+    }
+  } catch (_) {}
+
+  // Fallback for mirrors whose WordPress-style search route is unavailable.
   const params = new URLSearchParams({
     q: info.title,
     query_by: 'post_title,category,stars,director,imdb_id',
