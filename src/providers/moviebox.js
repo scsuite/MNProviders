@@ -165,7 +165,8 @@ async function searchMirror(mirror, token, metadata, mediaType) {
   const body = JSON.stringify({ page: 1, perPage: 20, keyword: metadata.title });
   const result = await apiRequest(mirror, SEARCH_PATH, { method: 'POST', body, token });
   if (result.response.status === 441) TOKEN_CACHE.delete(mirror);
-  if (!result.response.ok || !result.payload) return null;
+  if (!result.response.ok) throw new Error(`search HTTP ${result.response.status}`);
+  if (!result.payload) throw new Error('search invalid JSON');
   return findBestSubject(result.payload, metadata, mediaType);
 }
 
@@ -245,13 +246,17 @@ async function resolveSubject(mirror, token, subject, metadata, mediaType, seaso
     seasonPayload = seasonResult.payload;
   }
   let streams = [];
+  const playStatuses = [];
   for (const path of playPaths(subject.id, mediaType, season, episode, seasonPayload)) {
     const result = await apiRequest(mirror, path, { token });
+    playStatuses.push(result.response.status);
     if (!result.response.ok || !result.payload) continue;
     streams = extractStreams(result.payload, metadata, mediaType, season, episode);
     if (streams.length) break;
   }
-  if (!streams.length) return [];
+  if (!streams.length) {
+    throw new Error(`play no streams (HTTP ${playStatuses.join('/') || 'no response'})`);
+  }
 
   const subtitlePayloads = await Promise.all(CAPTION_PATHS.map(async prefix => {
     try { return (await apiRequest(mirror, `${prefix}${encodeURIComponent(subject.id)}`, { token })).payload; }
@@ -261,27 +266,49 @@ async function resolveSubject(mirror, token, subject, metadata, mediaType, seaso
   return streams.map(stream => ({ ...stream, subtitles }));
 }
 
+function diagnosticStream(mirror, message, metadata, mediaType, season, episode, index) {
+  const host = new URL(mirror).hostname;
+  const detail = String(message || 'unknown failure').replace(/\s+/g, ' ').slice(0, 90);
+  return {
+    name: `MovieBox DIAG | ${host} | ${detail}`,
+    title: `Diagnostic only: ${metadata.title}${mediaType === 'tv' ? ` S${season}E${episode}` : ''}`,
+    url: `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4?moviebox_diag=${index}`,
+    quality: 'Unknown',
+    source: `DIAG ${host}: ${detail}`,
+    provider: 'MovieBox',
+    headers: {},
+    subtitles: [],
+    seekable: true
+  };
+}
+
 async function getStreams(tmdbId, mediaType = 'movie', season = 1, episode = 1) {
   const type = mediaType === 'tv' ? 'tv' : 'movie';
   if (!tmdbId || (type === 'tv' && (!season || !episode))) return [];
   const metadata = await sharedMetadata.getMetadata(tmdbId, type);
   if (!metadata?.title) return [];
 
-  for (const mirror of MIRRORS) {
+  const diagnostics = [];
+  for (const [index, mirror] of MIRRORS.entries()) {
     try {
       const token = await bootstrapMirror(mirror);
       const subject = await searchMirror(mirror, token, metadata, type);
-      if (!subject) continue;
+      if (!subject) {
+        diagnostics.push(diagnosticStream(mirror, 'search OK; no matching title', metadata, type, season, episode, index));
+        continue;
+      }
       const streams = await resolveSubject(mirror, token, subject, metadata, type, season, episode);
       if (streams.length) return streams;
     } catch (error) {
-      console.log(`[MovieBox ${new URL(mirror).hostname}] ${error?.message || error}`);
+      const message = error?.message || String(error);
+      console.log(`[MovieBox ${new URL(mirror).hostname}] ${message}`);
+      diagnostics.push(diagnosticStream(mirror, message, metadata, type, season, episode, index));
     }
   }
-  return [];
+  return diagnostics;
 }
 
 module.exports = {
   MIRRORS, canonicalRequest, signedHeaders, findBestSubject, extractStreams,
-  extractSubtitles, playPaths, getStreams
+  extractSubtitles, playPaths, diagnosticStream, getStreams
 };
