@@ -2816,16 +2816,25 @@ var require_hdhub4u = __commonJS({
     }
     function parseEpisode($, pageUrl, episode) {
       const output = [];
-      const pattern = new RegExp(`(?:E|EP|Episode)\\s*0?${Number(episode)}(?:\\D|$)`, "i");
-      $("a[href]").each((_, anchor) => {
-        const node = $(anchor);
-        const context = clean(node.parent().text());
-        if (!pattern.test(context))
+      const wantedEpisode = Number(episode);
+      let currentEpisode = null;
+      $("h3,h4,h5,h6").each((_, heading) => {
+        const node = $(heading);
+        const text = clean(node.text());
+        const marker = text.match(/(?:EPiSODE|Episode|EP|E)\s*0?(\d+)(?:\D|$)/i);
+        if (marker) {
+          currentEpisode = Number(marker[1]);
           return;
-        const url = absolute(node.attr("href"), pageUrl);
-        const item = candidate(url, `${node.parent().parent().text()} ${context} ${node.text()}`, pageUrl);
-        if (item)
-          output.push(item);
+        }
+        if (currentEpisode !== wantedEpisode)
+          return;
+        node.find("a[href]").each((__, anchor) => {
+          const link = $(anchor);
+          const url = absolute(link.attr("href"), pageUrl);
+          const item = candidate(url, `${text} ${link.text()}`, pageUrl);
+          if (item)
+            output.push(item);
+        });
       });
       return output;
     }
@@ -2859,7 +2868,7 @@ var require_hdhub4u = __commonJS({
         }
       });
     }
-    function resolveHubDrive(item) {
+    function expandHubDriveRoutes(item) {
       return __async(this, null, function* () {
         const response = yield request(item.url, item.referer);
         if (!response.ok)
@@ -2874,6 +2883,12 @@ var require_hdhub4u = __commonJS({
           if (/hubcloud|hubcdn/i.test(url))
             routes.push(url);
         });
+        return [...new Set(routes)];
+      });
+    }
+    function resolveHubDrive(item) {
+      return __async(this, null, function* () {
+        const routes = yield expandHubDriveRoutes(item);
         return (yield mapConcurrent3([...new Set(routes)], 2, (url) => resolveCandidate2(__spreadProps(__spreadValues({}, item), { url, resolverType: /hubcdn/i.test(url) ? "hubcdn" : "hubcloud" })))).flat();
       });
     }
@@ -2954,7 +2969,13 @@ var require_hdhub4u = __commonJS({
         });
         if (!routes.length && /hubcloud|hubdrive|hubcdn/i.test(landingResponse.url))
           routes.push(landingResponse.url);
-        return (yield mapConcurrent3([...new Set(routes)], 3, (url) => resolveCandidate2(__spreadProps(__spreadValues({}, item), {
+        const canonicalGroups = yield mapConcurrent3([...new Set(routes)], 3, (url) => __async(this, null, function* () {
+          if (!/hubdrive/i.test(url))
+            return [url];
+          return expandHubDriveRoutes(__spreadProps(__spreadValues({}, item), { url, referer: landingResponse.url }));
+        }));
+        const canonicalRoutes = [...new Set(canonicalGroups.flat().filter(Boolean))];
+        return (yield mapConcurrent3(canonicalRoutes, 3, (url) => resolveCandidate2(__spreadProps(__spreadValues({}, item), {
           url,
           referer: landingResponse.url,
           resolverType: /hubcdn/i.test(url) ? "hubcdn" : /hubdrive/i.test(url) ? "hubdrive" : "hubcloud"
@@ -3036,36 +3057,14 @@ var require_hdhub4u = __commonJS({
         }
       });
     }
-    function selectFastCandidates(candidates) {
-      const unique = distinct(candidates);
-      const selected = [];
-      const coveredQualities = /* @__PURE__ */ new Set();
-      const add = (item) => {
-        if (!item || selected.some((existing) => existing.url === item.url))
-          return;
-        selected.push(item);
-        if (item.quality && item.quality !== "Unknown")
-          coveredQualities.add(item.quality);
-      };
-      unique.filter((item) => item.resolverType === "hubcdn" || item.resolverType === "watch").forEach(add);
-      for (const item of unique.filter((candidate2) => candidate2.resolverType === "hubdrive")) {
-        if (!coveredQualities.has(item.quality))
-          add(item);
-      }
-      for (const item of unique.filter((candidate2) => candidate2.resolverType === "protector")) {
-        if (!coveredQualities.has(item.quality))
-          add(item);
-      }
-      return selected.slice(0, 5);
-    }
     function getStreams3(tmdbId, mediaType, season = 1, episode = 1) {
       return __async(this, null, function* () {
         const candidates = yield discoverCandidates2(tmdbId, mediaType, season, episode);
-        const fastCandidates = selectFastCandidates(candidates);
-        return uniqueExactStreams3((yield mapConcurrent3(fastCandidates, 4, resolveCandidate2)).flat().filter(Boolean));
+        const downloadCandidates = candidates.filter((candidate2) => candidate2.resolverType !== "watch");
+        return uniqueExactStreams3((yield mapConcurrent3(downloadCandidates, 4, resolveCandidate2)).flat().filter(Boolean));
       });
     }
-    module2.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, selectFastCandidates, getStreams: getStreams3 };
+    module2.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreams: getStreams3 };
   }
 });
 

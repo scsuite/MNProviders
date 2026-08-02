@@ -125,14 +125,23 @@ function parseMovie($, pageUrl) {
 }
 function parseEpisode($, pageUrl, episode) {
   const output = [];
-  const pattern = new RegExp(`(?:E|EP|Episode)\\s*0?${Number(episode)}(?:\\D|$)`, 'i');
-  $('a[href]').each((_, anchor) => {
-    const node = $(anchor);
-    const context = clean(node.parent().text());
-    if (!pattern.test(context)) return;
-    const url = absolute(node.attr('href'), pageUrl);
-    const item = candidate(url, `${node.parent().parent().text()} ${context} ${node.text()}`, pageUrl);
-    if (item) output.push(item);
+  const wantedEpisode = Number(episode);
+  let currentEpisode = null;
+  $('h3,h4,h5,h6').each((_, heading) => {
+    const node = $(heading);
+    const text = clean(node.text());
+    const marker = text.match(/(?:EPiSODE|Episode|EP|E)\s*0?(\d+)(?:\D|$)/i);
+    if (marker) {
+      currentEpisode = Number(marker[1]);
+      return;
+    }
+    if (currentEpisode !== wantedEpisode) return;
+    node.find('a[href]').each((__, anchor) => {
+      const link = $(anchor);
+      const url = absolute(link.attr('href'), pageUrl);
+      const item = candidate(url, `${text} ${link.text()}`, pageUrl);
+      if (item) output.push(item);
+    });
   });
   return output;
 }
@@ -163,7 +172,7 @@ async function discoverCandidates(tmdbId, mediaType, season = 1, episode = 1) {
   }
 }
 
-async function resolveHubDrive(item) {
+async function expandHubDriveRoutes(item) {
   const response = await request(item.url, item.referer);
   if (!response.ok) return [];
   const html = await response.text();
@@ -174,6 +183,10 @@ async function resolveHubDrive(item) {
     const url = absolute($(anchor).attr('href'), response.url);
     if (/hubcloud|hubcdn/i.test(url)) routes.push(url);
   });
+  return [...new Set(routes)];
+}
+async function resolveHubDrive(item) {
+  const routes = await expandHubDriveRoutes(item);
   return (await mapConcurrent([...new Set(routes)], 2, url => resolveCandidate({ ...item, url, resolverType: /hubcdn/i.test(url) ? 'hubcdn' : 'hubcloud' }))).flat();
 }
 async function resolveHubCdn(item) {
@@ -230,7 +243,14 @@ async function resolveProtected(item) {
     if (/hubcloud|hubdrive|hubcdn/i.test(url)) routes.push(url);
   });
   if (!routes.length && /hubcloud|hubdrive|hubcdn/i.test(landingResponse.url)) routes.push(landingResponse.url);
-  return (await mapConcurrent([...new Set(routes)], 3, url => resolveCandidate({
+  // Expand Drive wrappers first, then resolve each canonical HubCloud/HubCDN page once.
+  // This preserves every final server link while avoiding duplicate HubCloud extraction.
+  const canonicalGroups = await mapConcurrent([...new Set(routes)], 3, async url => {
+    if (!/hubdrive/i.test(url)) return [url];
+    return expandHubDriveRoutes({ ...item, url, referer: landingResponse.url });
+  });
+  const canonicalRoutes = [...new Set(canonicalGroups.flat().filter(Boolean))];
+  return (await mapConcurrent(canonicalRoutes, 3, url => resolveCandidate({
     ...item, url, referer: landingResponse.url,
     resolverType: /hubcdn/i.test(url) ? 'hubcdn' : /hubdrive/i.test(url) ? 'hubdrive' : 'hubcloud'
   }))).flat();
@@ -279,36 +299,10 @@ async function resolveCandidate(item) {
     return [];
   } catch (_) { return []; }
 }
-function selectFastCandidates(candidates) {
-  const unique = distinct(candidates);
-  const selected = [];
-  const coveredQualities = new Set();
-  const add = item => {
-    if (!item || selected.some(existing => existing.url === item.url)) return;
-    selected.push(item);
-    if (item.quality && item.quality !== 'Unknown') coveredQualities.add(item.quality);
-  };
-
-  // These routes normally resolve in one request and give the quickest useful result.
-  unique.filter(item => item.resolverType === 'hubcdn' || item.resolverType === 'watch').forEach(add);
-
-  // Keep one Drive release for every quality not already represented by an Instant link.
-  for (const item of unique.filter(candidate => candidate.resolverType === 'hubdrive')) {
-    if (!coveredQualities.has(item.quality)) add(item);
-  }
-
-  // Protected redirects are the slowest chain. Use only one when a quality has no faster route.
-  for (const item of unique.filter(candidate => candidate.resolverType === 'protector')) {
-    if (!coveredQualities.has(item.quality)) add(item);
-  }
-
-  // Nuvio waits for the entire Promise and has a hard runtime timeout; keep the bounded fast set.
-  return selected.slice(0, 5);
-}
 async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
   const candidates = await discoverCandidates(tmdbId, mediaType, season, episode);
-  const fastCandidates = selectFastCandidates(candidates);
-  return uniqueExactStreams((await mapConcurrent(fastCandidates, 4, resolveCandidate)).flat().filter(Boolean));
+  const downloadCandidates = candidates.filter(candidate => candidate.resolverType !== 'watch');
+  return uniqueExactStreams((await mapConcurrent(downloadCandidates, 4, resolveCandidate)).flat().filter(Boolean));
 }
 
-module.exports = { discoverCandidates, resolveCandidate, selectFastCandidates, getStreams };
+module.exports = { discoverCandidates, resolveCandidate, getStreams };
