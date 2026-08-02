@@ -307,16 +307,84 @@ function findLinkByText($, pattern) {
   return found;
 }
 
-function isDirectMediaUrl(value) {
+function isAllowedMediaUrl(value) {
   try {
     const url = new URL(value);
     if (!/^https?:$/.test(url.protocol)) return false;
-    if (/^(?:www\.)?driveseed\.org$/i.test(url.hostname)) return false;
     if (/(?:^|\/)null(?:\/|$)/i.test(url.pathname)) return false;
-    return true;
+    const hostname = url.hostname.toLowerCase();
+    return hostname === 'video-downloads.googleusercontent.com' ||
+      hostname.endsWith('.workers.dev') ||
+      hostname.endsWith('.cloudflarestorage.com');
   } catch (_) {
     return false;
   }
+}
+
+function directUrlFromRedirect(location, base) {
+  try {
+    const redirectUrl = new URL(location, base);
+    if (isAllowedMediaUrl(redirectUrl.href)) return redirectUrl.href;
+    const nestedUrl = redirectUrl.searchParams.get('url');
+    return isAllowedMediaUrl(nestedUrl) ? new URL(nestedUrl).href : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function buildStream(info, item, directUrl, source, seekable, headers = {}) {
+  const attributes = parseMediaAttributes(info.name, item.descriptor);
+  const quality = attributes.quality === 'Unknown' ? item.quality : attributes.quality;
+  return {
+    name: `UHDMovies \u2022 ${quality} \u2022 ${source}`,
+    title: info.name || item.descriptor,
+    url: directUrl,
+    quality,
+    size: info.size || item.size,
+    source,
+    provider: 'UHDMovies',
+    headers,
+    subtitles: [],
+    seekable,
+    ...(attributes.hdr ? { hdr: true } : {}),
+    ...(attributes.codec ? { codec: attributes.codec } : {}),
+    ...(attributes.audio ? { audio: attributes.audio } : {}),
+    ...(attributes.languages.length ? { languages: attributes.languages } : {})
+  };
+}
+
+async function resolveResumeRoute($file, filePage, fileUrl, info, item) {
+  const resumePath = findLinkByText($file, /^Resume Cloud$/i);
+  const resumeUrl = absolute(resumePath, filePage.response.url || fileUrl);
+  if (!resumeUrl) return null;
+
+  const resume = await responseText(resumeUrl, { headers: { Referer: filePage.response.url || fileUrl } });
+  const $resume = cheerio.load(resume.html);
+  const directPath = findLinkByText($resume, /^Cloud Resume Download$/i);
+  const directUrl = absolute(directPath, resume.response.url || resumeUrl);
+  if (!isAllowedMediaUrl(directUrl)) return null;
+
+  return buildStream(info, item, directUrl, 'DriveSeed Resume', true, {
+    ...HEADERS,
+    Referer: resume.response.url || resumeUrl
+  });
+}
+
+async function resolveInstantRoute($file, filePage, fileUrl, info, item) {
+  const instantPath = findLinkByText($file, /^Instant Download$/i);
+  const instantUrl = absolute(instantPath, filePage.response.url || fileUrl);
+  if (!instantUrl) return null;
+
+  const response = await fetch(instantUrl, {
+    method: 'GET',
+    redirect: 'manual',
+    headers: { ...HEADERS, Referer: filePage.response.url || fileUrl }
+  });
+  if (response.status < 300 || response.status >= 400) return null;
+  const directUrl = directUrlFromRedirect(response.headers.get('location'), instantUrl);
+  if (!directUrl) return null;
+
+  return buildStream(info, item, directUrl, 'DriveSeed Instant', false);
 }
 
 async function resolveDriveSeed(landingUrl, item) {
@@ -330,34 +398,12 @@ async function resolveDriveSeed(landingUrl, item) {
     : initial;
   const $file = cheerio.load(filePage.html);
   const info = extractFileInfo($file);
-  const resumePath = findLinkByText($file, /^Resume Cloud$/i);
-  const resumeUrl = absolute(resumePath, filePage.response.url || fileUrl);
-  if (!resumeUrl) return [];
 
-  const resume = await responseText(resumeUrl, { headers: { Referer: filePage.response.url || fileUrl } });
-  const $resume = cheerio.load(resume.html);
-  const directPath = findLinkByText($resume, /^Cloud Resume Download$/i);
-  const directUrl = absolute(directPath, resume.response.url || resumeUrl);
-  if (!isDirectMediaUrl(directUrl)) return [];
-
-  const attributes = parseMediaAttributes(info.name, item.descriptor);
-  const quality = attributes.quality === 'Unknown' ? item.quality : attributes.quality;
-  return [{
-    name: `UHDMovies \u2022 ${quality} \u2022 DriveSeed Resume`,
-    title: info.name || item.descriptor,
-    url: directUrl,
-    quality,
-    size: info.size || item.size,
-    source: 'DriveSeed Resume',
-    provider: 'UHDMovies',
-    headers: { ...HEADERS, Referer: resume.response.url || resumeUrl },
-    subtitles: [],
-    seekable: true,
-    ...(attributes.hdr ? { hdr: true } : {}),
-    ...(attributes.codec ? { codec: attributes.codec } : {}),
-    ...(attributes.audio ? { audio: attributes.audio } : {}),
-    ...(attributes.languages.length ? { languages: attributes.languages } : {})
-  }];
+  const routes = await Promise.all([
+    resolveResumeRoute($file, filePage, fileUrl, info, item).catch(() => null),
+    resolveInstantRoute($file, filePage, fileUrl, info, item).catch(() => null)
+  ]);
+  return routes.filter(Boolean);
 }
 
 async function resolveCandidate(item) {

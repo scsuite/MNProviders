@@ -1,6 +1,6 @@
 {
   "name": "MNProviders",
-  "version": "1.0.55",
+  "version": "1.0.56",
   "description": "Independent Nuvio providers with device-side discovery and extraction",
   "scrapers": [
     {
@@ -160,11 +160,11 @@
     {
       "id": "UHDMovies",
       "name": "UHDMovies",
-      "description": "Independent UHDMovies provider with range-capable DriveSeed Resume links",
-      "version": "1.0.0",
+      "description": "Independent UHDMovies provider with seekable DriveSeed Resume links and progressive Google fallback",
+      "version": "1.0.1",
       "author": "Phisher and yoruix; Nuvio compatibility port by scsuite",
       "supportedTypes": ["movie", "tv"],
-      "filename": "providers/UHDMovies.js?v=100",
+      "filename": "providers/UHDMovies.js?v=101",
       "source": "src/providers/uhdmovies.js",
       "enabled": true,
       "formats": ["mkv"],
