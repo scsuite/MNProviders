@@ -1493,10 +1493,33 @@ function resolveCandidate2(item) {
     }
   });
 }
+function selectFastCandidates(candidates) {
+  const unique = distinct(candidates);
+  const selected = [];
+  const coveredQualities = /* @__PURE__ */ new Set();
+  const add = (item) => {
+    if (!item || selected.some((existing) => existing.url === item.url))
+      return;
+    selected.push(item);
+    if (item.quality && item.quality !== "Unknown")
+      coveredQualities.add(item.quality);
+  };
+  unique.filter((item) => item.resolverType === "hubcdn" || item.resolverType === "watch").forEach(add);
+  for (const item of unique.filter((candidate2) => candidate2.resolverType === "hubdrive")) {
+    if (!coveredQualities.has(item.quality))
+      add(item);
+  }
+  for (const item of unique.filter((candidate2) => candidate2.resolverType === "protector")) {
+    if (!coveredQualities.has(item.quality))
+      add(item);
+  }
+  return selected.slice(0, 5);
+}
 function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
     const candidates = yield discoverCandidates2(tmdbId, mediaType, season, episode);
-    return uniqueExactStreams2((yield mapConcurrent2(candidates, 4, resolveCandidate2)).flat().filter(Boolean));
+    const fastCandidates = selectFastCandidates(candidates);
+    return uniqueExactStreams2((yield mapConcurrent2(fastCandidates, 4, resolveCandidate2)).flat().filter(Boolean));
   });
 }
-module.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreams: getStreams2 };
+module.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, selectFastCandidates, getStreams: getStreams2 };

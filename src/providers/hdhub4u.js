@@ -243,9 +243,36 @@ async function resolveCandidate(item) {
     return [];
   } catch (_) { return []; }
 }
+function selectFastCandidates(candidates) {
+  const unique = distinct(candidates);
+  const selected = [];
+  const coveredQualities = new Set();
+  const add = item => {
+    if (!item || selected.some(existing => existing.url === item.url)) return;
+    selected.push(item);
+    if (item.quality && item.quality !== 'Unknown') coveredQualities.add(item.quality);
+  };
+
+  // These routes normally resolve in one request and give the quickest useful result.
+  unique.filter(item => item.resolverType === 'hubcdn' || item.resolverType === 'watch').forEach(add);
+
+  // Keep one Drive release for every quality not already represented by an Instant link.
+  for (const item of unique.filter(candidate => candidate.resolverType === 'hubdrive')) {
+    if (!coveredQualities.has(item.quality)) add(item);
+  }
+
+  // Protected redirects are the slowest chain. Use only one when a quality has no faster route.
+  for (const item of unique.filter(candidate => candidate.resolverType === 'protector')) {
+    if (!coveredQualities.has(item.quality)) add(item);
+  }
+
+  // Nuvio waits for the entire Promise and has a hard runtime timeout; keep the bounded fast set.
+  return selected.slice(0, 5);
+}
 async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
   const candidates = await discoverCandidates(tmdbId, mediaType, season, episode);
-  return uniqueExactStreams((await mapConcurrent(candidates, 4, resolveCandidate)).flat().filter(Boolean));
+  const fastCandidates = selectFastCandidates(candidates);
+  return uniqueExactStreams((await mapConcurrent(fastCandidates, 4, resolveCandidate)).flat().filter(Boolean));
 }
 
-module.exports = { discoverCandidates, resolveCandidate, getStreams };
+module.exports = { discoverCandidates, resolveCandidate, selectFastCandidates, getStreams };
