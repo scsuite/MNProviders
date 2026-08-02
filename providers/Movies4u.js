@@ -1,4 +1,4 @@
-/** FourKHDHub - generated from src/providers/fourkHDhub.js */
+/** Movies4u - generated from src/providers/movies4u.js */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __defProps = Object.defineProperties;
@@ -299,11 +299,11 @@ var require_streams = __commonJS({
     function uniqueStreams(streams, defaults) {
       const seen = /* @__PURE__ */ new Set();
       return (streams || []).flatMap((stream) => {
-        const normalized2 = normalizeStream(stream, defaults);
-        if (!normalized2 || seen.has(normalized2.url))
+        const normalized = normalizeStream(stream, defaults);
+        if (!normalized || seen.has(normalized.url))
           return [];
-        seen.add(normalized2.url);
-        return [normalized2];
+        seen.add(normalized.url);
+        return [normalized];
       });
     }
     function extractMediaCandidates(html, baseUrl) {
@@ -337,8 +337,8 @@ var require_streams = __commonJS({
           return EMBED_HINT.test(finalUrl) ? null : finalUrl;
         const html = yield response.text();
         const candidates = extractMediaCandidates(html, finalUrl);
-        for (const candidate of candidates) {
-          const resolved = yield resolveFinalUrl(candidate, options, depth + 1).catch(() => null);
+        for (const candidate2 of candidates) {
+          const resolved = yield resolveFinalUrl(candidate2, options, depth + 1).catch(() => null);
           if (resolved)
             return resolved;
         }
@@ -628,8 +628,8 @@ function expandMovieButton(_0) {
         const words = query.toLowerCase().replace(/\b(download|19\d{2}|20\d{2}|2160p|1080p|720p|480p)\b/g, "").split(/\W+/).filter((w) => w.length > 2);
         return hits.filter((hit) => {
           const name = String(hit.file_name || "");
-          const normalized2 = name.toLowerCase();
-          if (!words.every((word) => normalized2.includes(word)) || /\.zip(?:$|\?)/i.test(name))
+          const normalized = name.toLowerCase();
+          if (!words.every((word) => normalized.includes(word)) || /\.zip(?:$|\?)/i.test(name))
             return false;
           if (!hint.season || !hint.episode)
             return true;
@@ -887,7 +887,7 @@ var require_metadata = __commonJS({
     var DOMAINS5 = require_domains();
     var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
     var cache = /* @__PURE__ */ new Map();
-    function getMetadata2(tmdbId, mediaType) {
+    function getMetadata3(tmdbId, mediaType) {
       const type = mediaType === "tv" ? "tv" : "movie";
       const key = `${type}:${tmdbId}`;
       if (!cache.has(key)) {
@@ -902,7 +902,7 @@ var require_metadata = __commonJS({
       }
       return cache.get(key);
     }
-    module2.exports = { getMetadata: getMetadata2 };
+    module2.exports = { getMetadata: getMetadata3 };
   }
 });
 
@@ -947,14 +947,14 @@ function getMainUrls() {
     return [...new Set(candidates)];
   });
 }
-function search(metadata2, season, mainUrls) {
+function search(metadata, season, mainUrls) {
   return __async(this, null, function* () {
-    const queries = [metadata2.imdbId, metadata2.title].filter(Boolean);
+    const queries = [metadata.imdbId, metadata.title].filter(Boolean);
     const attempts = mainUrls.flatMap((mainUrl) => queries.map((query) => __async(this, null, function* () {
       const data = yield fetch(`${mainUrl}/search.php?q=${encodeURIComponent(query)}&page=1`, { headers: __spreadProps(__spreadValues({}, HEADERS), { Referer: `${mainUrl}/` }) }).then((r) => r.json());
       const documents = (data.hits || []).map((hit) => hit.document).filter(Boolean);
-      const exact = metadata2.imdbId ? documents.filter((doc) => doc.imdb_id === metadata2.imdbId) : [];
-      const titled = documents.filter((doc) => String(doc.post_title || "").toLowerCase().includes(String(metadata2.title || "").toLowerCase()));
+      const exact = metadata.imdbId ? documents.filter((doc) => doc.imdb_id === metadata.imdbId) : [];
+      const titled = documents.filter((doc) => String(doc.post_title || "").toLowerCase().includes(String(metadata.title || "").toLowerCase()));
       const candidates = exact.length ? exact : titled;
       const match = candidates.find((doc) => coversSeason(doc, season));
       if (match)
@@ -1030,13 +1030,13 @@ function discoverCandidates(tmdbId, mediaType, season = 1, episode = 1) {
       const type = normalizeType(mediaType);
       const seasonNumber = Number(season) || 1;
       const episodeNumber = Number(episode) || 1;
-      const [metadata2, mainUrls] = yield Promise.all([
+      const [metadata, mainUrls] = yield Promise.all([
         getMetadata(String(tmdbId).replace(/^tmdb:/i, ""), type),
         getMainUrls()
       ]);
-      if (!(metadata2 == null ? void 0 : metadata2.title))
+      if (!(metadata == null ? void 0 : metadata.title))
         return [];
-      const mediaUrl = yield search(metadata2, type === "tv" ? seasonNumber : null, mainUrls);
+      const mediaUrl = yield search(metadata, type === "tv" ? seasonNumber : null, mainUrls);
       if (!mediaUrl)
         return [];
       const html = yield fetch(mediaUrl, { headers: HEADERS }).then((r) => r.text());
@@ -1098,27 +1098,27 @@ function discoverCandidates(tmdbId, mediaType, season = 1, episode = 1) {
     }
   });
 }
-function resolveCandidate(candidate) {
+function resolveCandidate(candidate2) {
   return __async(this, null, function* () {
-    if (!candidate || !candidate.url)
+    if (!candidate2 || !candidate2.url)
       return [];
     try {
-      if (candidate.resolverType === "direct") {
+      if (candidate2.resolverType === "direct") {
         return [{
-          name: candidate.name || `MoviesDrive \u2022 ${candidate.quality || "Unknown"} \u2022 ${candidate.source || "Direct"}`,
-          title: candidate.title,
-          url: candidate.url,
-          quality: candidate.quality || "Unknown",
-          size: candidate.size,
-          headers: candidate.headers || HEADERS,
+          name: candidate2.name || `MoviesDrive \u2022 ${candidate2.quality || "Unknown"} \u2022 ${candidate2.source || "Direct"}`,
+          title: candidate2.title,
+          url: candidate2.url,
+          quality: candidate2.quality || "Unknown",
+          size: candidate2.size,
+          headers: candidate2.headers || HEADERS,
           provider: "MoviesDrive",
-          source: candidate.source || "Direct",
+          source: candidate2.source || "Direct",
           subtitles: []
         }];
       }
-      const streams = yield extractHost(candidate.url, candidate.referer || MAIN_URL, {
-        quality: candidate.quality,
-        size: candidate.size
+      const streams = yield extractHost(candidate2.url, candidate2.referer || MAIN_URL, {
+        quality: candidate2.quality,
+        size: candidate2.size
       });
       return (streams || []).map((stream) => __spreadProps(__spreadValues({}, stream), {
         provider: "MoviesDrive"
@@ -1155,19 +1155,419 @@ var init_moviesdrive = __esm({
   }
 });
 
-// src/providers/fourkHDhub.js
+// src/providers/vcloud.js
+var require_vcloud = __commonJS({
+  "src/providers/vcloud.js"(exports2, module2) {
+    var USER_AGENT2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
+    function clean2(value) {
+      return String(value || "").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+    }
+    function origin(url) {
+      const match = String(url).match(/^(https?:\/\/[^/]+)/i);
+      return match ? match[1] : "";
+    }
+    function absolute(value, base) {
+      if (!value)
+        return null;
+      const url = String(value).replace(/&amp;/gi, "&").trim();
+      if (/^https?:\/\//i.test(url))
+        return url;
+      if (url.startsWith("/"))
+        return origin(base) + url;
+      return String(base).replace(/\/[^/]*$/, "/") + url.replace(/^\.\//, "");
+    }
+    function anchors(html, base) {
+      const output = [];
+      const regex = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      let match;
+      while (match = regex.exec(html)) {
+        const url = absolute(match[1], base);
+        if (url)
+          output.push({ url, text: clean2(match[2]) });
+      }
+      return output;
+    }
+    function getResponse(url, referer, redirect) {
+      return __async(this, null, function* () {
+        return fetch(url, {
+          redirect: redirect || "follow",
+          headers: __spreadValues({ "User-Agent": USER_AGENT2, Accept: "text/html,*/*;q=0.8" }, referer ? { Referer: referer } : {})
+        });
+      });
+    }
+    function decodeTwice(value) {
+      try {
+        return atob(atob(value));
+      } catch (_) {
+        return "";
+      }
+    }
+    function extractIntermediate(html) {
+      const script = String(html);
+      const encoded = script.match(/atob\(atob\(['"]([^'"]+)['"]\)\)/i);
+      if (encoded)
+        return decodeTwice(encoded[1]);
+      const plain = script.match(/var\s+url\s*=\s*['"]([^'"]+)['"]/i);
+      return plain ? plain[1] : "";
+    }
+    function qualityFrom2(value) {
+      const match = String(value).match(/(2160|1080|720|480|360)p?/i);
+      if (!match)
+        return "Unknown";
+      return match[1] === "2160" ? "4K" : `${match[1]}p`;
+    }
+    function resolveServer(server, label, referer) {
+      return __async(this, null, function* () {
+        let url = server.url;
+        const text2 = server.text;
+        let name = text2 || "V-Cloud";
+        if (/buzzserver/i.test(text2)) {
+          const response = yield getResponse(url.replace(/\/$/, "") + "/download", url, "manual");
+          const target = response.headers.get("hx-redirect");
+          if (!target)
+            return null;
+          url = absolute(target, url);
+          name = "BuzzServer";
+        } else if (/pixeldra|pixelserver|\bpixel\b/i.test(text2)) {
+          if (!/download/i.test(url))
+            url = origin(url) + "/api/file/" + url.split("/").filter(Boolean).pop() + "?download";
+          name = "Pixeldrain";
+        } else if (/10\s*gbps/i.test(text2)) {
+          const response = yield getResponse(url, referer, "follow");
+          url = response.url || url;
+          if (url.includes("link="))
+            url = decodeURIComponent(url.split("link=").pop());
+          name = "10Gbps";
+          if (response.body && response.body.cancel)
+            yield response.body.cancel();
+        } else if (/fslv2/i.test(text2))
+          name = "FSLv2";
+        else if (/\bfsl\b/i.test(text2))
+          name = "FSL";
+        else if (/pdl server/i.test(text2))
+          name = "PDL";
+        else if (/s3 server/i.test(text2))
+          name = "S3";
+        else if (/mega server/i.test(text2))
+          name = "Mega";
+        return { name, url, quality: qualityFrom2(label), headers: { "User-Agent": USER_AGENT2, Referer: referer } };
+      });
+    }
+    function resolveVCloud(url, referer, label) {
+      return __async(this, null, function* () {
+        try {
+          let response = yield getResponse(url, referer);
+          if (!response.ok)
+            return { streams: [], blocked: `HTTP ${response.status}` };
+          let html = yield response.text();
+          let pageUrl = response.url || url;
+          if (/api\/index\.php/i.test(pageUrl)) {
+            const next = anchors(html, pageUrl).find((item) => /download|v-?cloud|continue/i.test(item.text + " " + item.url));
+            if (!next)
+              return { streams: [], blocked: "api/index.php target missing" };
+            response = yield getResponse(next.url, pageUrl);
+            if (!response.ok)
+              return { streams: [], blocked: `HTTP ${response.status}` };
+            html = yield response.text();
+            pageUrl = response.url || next.url;
+          }
+          const intermediate = absolute(extractIntermediate(html), pageUrl);
+          if (!intermediate)
+            return { streams: [], blocked: "encoded intermediate URL missing" };
+          response = yield getResponse(intermediate, pageUrl);
+          if (!response.ok)
+            return { streams: [], blocked: `intermediate HTTP ${response.status}` };
+          const serverHtml = yield response.text();
+          const serverPage = response.url || intermediate;
+          const candidates = anchors(serverHtml, serverPage).filter((item) => /fsl|buzz|pixel|pdl|10\s*gbps|s3 server|mega server/i.test(item.text));
+          const results = yield Promise.all(candidates.map((item) => resolveServer(item, label, serverPage).catch(() => null)));
+          return { streams: results.filter(Boolean), blocked: null };
+        } catch (error) {
+          return { streams: [], blocked: error && error.message ? error.message : String(error) };
+        }
+      });
+    }
+    module2.exports = { resolveVCloud };
+  }
+});
+
+// src/providers/vegamovies.js
+var require_vegamovies = __commonJS({
+  "src/providers/vegamovies.js"(exports2, module2) {
+    var DOMAINS5 = require_domains();
+    var TMDB_API = DOMAINS5.TMDB_API;
+    var { resolveVCloud } = require_vcloud();
+    var { mapConcurrent: mapConcurrent3, uniqueExactStreams: uniqueExactStreams3 } = require_streams();
+    var sharedMetadata3 = require_metadata();
+    var DOMAINS_URL2 = DOMAINS5.PHISHER_DOMAINS;
+    var VEGA_FALLBACK = DOMAINS5.VEGAMOVIES_FALLBACK;
+    var USER_AGENT2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
+    function requestText(url, referer) {
+      return __async(this, null, function* () {
+        let lastError;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const response = yield fetch(url, {
+              redirect: "follow",
+              headers: __spreadValues({
+                "User-Agent": USER_AGENT2,
+                Accept: "text/html,application/json;q=0.9,*/*;q=0.8"
+              }, referer ? { Referer: referer } : {})
+            });
+            if (!response.ok)
+              throw new Error(`HTTP ${response.status} for ${url}`);
+            return response.text();
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw lastError;
+      });
+    }
+    function getMediaInfo(tmdbId, mediaType) {
+      return __async(this, null, function* () {
+        return sharedMetadata3.getMetadata(tmdbId, mediaType);
+      });
+    }
+    function getVegaBase() {
+      return __async(this, null, function* () {
+        try {
+          const domains = JSON.parse(yield requestText(DOMAINS_URL2));
+          if (domains.vegamovies)
+            return String(domains.vegamovies).replace(/\/$/, "");
+        } catch (_) {
+        }
+        return VEGA_FALLBACK;
+      });
+    }
+    function searchVega(base, query) {
+      return __async(this, null, function* () {
+        const data = JSON.parse(yield requestText(`${base}/search.php?q=${encodeURIComponent(query)}`, base));
+        return (data.hits || []).map((hit) => hit && hit.document).filter(Boolean);
+      });
+    }
+    function chooseResult2(results, media, mediaType) {
+      const imdbMatch = results.find((item) => media.imdbId && item.imdb_id === media.imdbId);
+      if (imdbMatch)
+        return imdbMatch;
+      const title = String(media.title || "").toLowerCase();
+      const year = String(media.year || "");
+      return results.find((item) => {
+        const value = String(item.post_title || "").toLowerCase();
+        return value.includes(title) && (!year || value.includes(year)) && (mediaType !== "tv" || /season|series|episode/i.test(value));
+      }) || results[0];
+    }
+    function absoluteUrl2(value, base) {
+      if (!value)
+        return null;
+      const url = String(value).trim();
+      if (/^https?:\/\//i.test(url))
+        return url;
+      const origin = String(base || "").match(/^(https?:\/\/[^/]+)/i);
+      if (!origin)
+        return null;
+      if (url.startsWith("/"))
+        return origin[1] + url;
+      return String(base).replace(/\/[^/]*$/, "/").replace(/\/$/, "/") + url.replace(/^\.\//, "");
+    }
+    function cleanText(value) {
+      return String(value || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+    }
+    function headingBlocks(html) {
+      const blocks = [];
+      const regex = /<(h[3-5])\b[^>]*>([\s\S]*?)<\/\1>([\s\S]*?)(?=<h[3-5]\b|$)/gi;
+      let match;
+      while (match = regex.exec(html))
+        blocks.push({ heading: cleanText(match[2]), body: match[3] });
+      return blocks;
+    }
+    function anchors(html, base) {
+      const values = [];
+      const regex = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      let match;
+      while (match = regex.exec(html)) {
+        const url = absoluteUrl2(match[1].replace(/&amp;/gi, "&"), base);
+        if (url)
+          values.push({ url, text: cleanText(match[2]) });
+      }
+      return values;
+    }
+    function movieReleaseLinks(html, base) {
+      const links = [];
+      for (const block of headingBlocks(html)) {
+        for (const anchor of anchors(block.body, base)) {
+          if (/nexdrive|dwd-button|download now/i.test(anchor.url + " " + anchor.text + " " + block.body)) {
+            links.push({ url: anchor.url, label: block.heading });
+          }
+        }
+      }
+      return links;
+    }
+    function episodeReleaseLinks(html, base, season, episode) {
+      const links = [];
+      const seasonRegex = new RegExp(`season\\s*0?${season}(?:\\D|$)`, "i");
+      for (const block of headingBlocks(html)) {
+        if (!seasonRegex.test(block.heading))
+          continue;
+        for (const anchor of anchors(block.body, base)) {
+          if (/(g-?direct|v-?cloud|single|download|nexdrive)/i.test(anchor.text + " " + anchor.url)) {
+            links.push({ url: anchor.url, label: block.heading });
+          }
+        }
+      }
+      return links;
+    }
+    function resolveFastdl(directPage, pageUrl) {
+      return __async(this, null, function* () {
+        try {
+          const embed = yield requestText(directPage, pageUrl);
+          const match = embed.match(/(?:var\s+reurl\s*=\s*|['"])(?:https:\/\/fastdl\.[^/]+\/dl\.php\?link=)(https:\/\/video-downloads\.googleusercontent\.com\/[^'"\s<]+)/i);
+          if (!match)
+            return null;
+          return { name: "G-Direct (VLC)", url: match[1].replace(/&amp;/g, "&"), referer: directPage, compatibility: "external" };
+        } catch (_) {
+          return null;
+        }
+      });
+    }
+    function qualityFrom2(label) {
+      const match = String(label).match(/(2160|1080|720|480|360)p?/i);
+      if (!match)
+        return "Unknown";
+      return match[1] === "2160" ? "4K" : `${match[1]}p`;
+    }
+    function discoverCandidates3(tmdbId, mediaType, season, episode) {
+      return __async(this, null, function* () {
+        if (!tmdbId || !["movie", "tv"].includes(mediaType))
+          return [];
+        if (mediaType === "tv" && (!season || !episode))
+          return [];
+        try {
+          const [base, media] = yield Promise.all([getVegaBase(), getMediaInfo(tmdbId, mediaType)]);
+          let results = media.imdbId ? yield searchVega(base, media.imdbId) : [];
+          if (!results.length)
+            results = yield searchVega(base, media.title);
+          const result = chooseResult2(results, media, mediaType);
+          if (!result || !result.permalink)
+            return [];
+          const detailUrl = absoluteUrl2(result.permalink, base);
+          const detail = yield requestText(detailUrl, base);
+          const releases = mediaType === "movie" ? movieReleaseLinks(detail, base) : episodeReleaseLinks(detail, base, Number(season), Number(episode));
+          const candidateJobs = releases.map((release) => __async(this, null, function* () {
+            try {
+              const page = yield requestText(release.url, base);
+              let routes = [];
+              if (mediaType === "tv" && episode) {
+                const episodeRegex = new RegExp(`episodes?\\s*:\\s*0?${episode}(?:\\D|$)`, "i");
+                for (const block of headingBlocks(page)) {
+                  if (!episodeRegex.test(block.heading))
+                    continue;
+                  routes = anchors(block.body, release.url);
+                  break;
+                }
+              } else {
+                routes = anchors(page, release.url);
+              }
+              const useful = routes.filter((item) => /g-?direct|instant|fastdl|v-?cloud|resumable|vcloud\.zip/i.test(item.text + " " + item.url));
+              const quality = qualityFrom2(release.label);
+              return useful.map((route) => ({
+                provider: "vegamovies",
+                source: /vcloud\.zip|v-?cloud|resumable/i.test(route.text + " " + route.url) ? "VCloud" : "FastDL",
+                quality,
+                url: route.url,
+                label: release.label,
+                referer: release.url,
+                headers: { "User-Agent": USER_AGENT2, Referer: release.url },
+                resolverType: /vcloud\.zip|v-?cloud|resumable/i.test(route.text + " " + route.url) ? "vcloud" : "fastdl"
+              }));
+            } catch (_) {
+              return [];
+            }
+          }));
+          const candidatesList = yield Promise.all(candidateJobs);
+          return candidatesList.flat();
+        } catch (error) {
+          console.log(`[VegaMovies Candidates] ${error && error.message ? error.message : error}`);
+          return [];
+        }
+      });
+    }
+    function resolveCandidate3(candidate2) {
+      return __async(this, null, function* () {
+        if (!candidate2 || !candidate2.url)
+          return [];
+        try {
+          if (candidate2.resolverType === "vcloud") {
+            const resolved = yield resolveVCloud(candidate2.url, candidate2.referer, candidate2.label || candidate2.quality);
+            return (resolved.streams || []).map((stream) => __spreadProps(__spreadValues({}, stream), {
+              quality: candidate2.quality || stream.quality,
+              provider: "vegamovies",
+              source: stream.name || "VCloud",
+              subtitles: []
+            }));
+          } else if (candidate2.resolverType === "fastdl") {
+            const direct = yield resolveFastdl(candidate2.url, candidate2.referer);
+            if (!direct)
+              return [];
+            return [{
+              name: `VegaMovies G-Direct - ${candidate2.quality || "Unknown"}`,
+              title: candidate2.label || "VegaMovies Stream",
+              url: direct.url,
+              quality: candidate2.quality || "Unknown",
+              headers: { "User-Agent": USER_AGENT2, Referer: candidate2.referer },
+              provider: "vegamovies",
+              source: "FastDL",
+              subtitles: []
+            }];
+          } else if (candidate2.resolverType === "direct") {
+            return [{
+              name: `VegaMovies Direct - ${candidate2.quality || "Unknown"}`,
+              url: candidate2.url,
+              quality: candidate2.quality || "Unknown",
+              headers: candidate2.headers,
+              provider: "vegamovies",
+              source: candidate2.source || "Direct",
+              subtitles: []
+            }];
+          }
+          return [];
+        } catch (_) {
+          return [];
+        }
+      });
+    }
+    function getStreams3(_0, _1, _2, _3) {
+      return __async(this, arguments, function* (tmdbId, mediaType, season, episode, options = {}) {
+        try {
+          const candidates = yield discoverCandidates3(tmdbId, mediaType, season, episode);
+          const resolvedResults = yield mapConcurrent3(candidates, 4, resolveCandidate3);
+          const flat = resolvedResults.flat().filter(Boolean);
+          return uniqueExactStreams3(flat);
+        } catch (error) {
+          console.log(`[VegaMovies] ${error && error.message ? error.message : error}`);
+          return [];
+        }
+      });
+    }
+    module2.exports = { discoverCandidates: discoverCandidates3, resolveCandidate: resolveCandidate3, getStreams: getStreams3 };
+  }
+});
+
+// src/providers/movies4u.js
 var cheerio3 = require("cheerio-without-node-native");
 var DOMAINS4 = require_domains();
 var { mapConcurrent: mapConcurrent2, uniqueExactStreams: uniqueExactStreams2 } = require_streams();
 var moviesDrive = (init_moviesdrive(), __toCommonJS(moviesdrive_exports));
+var vegaMovies = require_vegamovies();
 var sharedMetadata2 = require_metadata();
-var HEADERS2 = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-  Accept: "text/html,*/*;q=0.8"
-};
+var USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
+var HEADERS2 = { "User-Agent": USER_AGENT, Accept: "text/html,*/*;q=0.8", Cookie: "xla=s4t" };
 function text(url, referer) {
   return __async(this, null, function* () {
-    const response = yield fetch(url, { redirect: "follow", headers: __spreadValues(__spreadValues({}, HEADERS2), referer ? { Referer: referer } : {}) });
+    const response = yield fetch(url, {
+      redirect: "follow",
+      headers: __spreadValues(__spreadValues({}, HEADERS2), referer ? { Referer: referer } : {})
+    });
     if (!response.ok)
       throw new Error(`HTTP ${response.status} for ${url}`);
     return response.text();
@@ -1177,29 +1577,23 @@ function getBaseUrl() {
   return __async(this, null, function* () {
     try {
       const domains = JSON.parse(yield text(DOMAINS4.PHISHER_DOMAINS));
-      if (domains["4khdhub"])
-        return String(domains["4khdhub"]).replace(/\/$/, "");
+      if (domains.movies4u)
+        return String(domains.movies4u).replace(/\/$/, "");
     } catch (_) {
     }
-    return DOMAINS4.FOURKHDHUB_FALLBACK || "https://4khdhub.org";
+    return DOMAINS4.MOVIES4U_FALLBACK;
   });
 }
-function metadata(tmdbId, mediaType) {
+function getMetadata2(tmdbId, mediaType) {
   return __async(this, null, function* () {
     return sharedMetadata2.getMetadata(tmdbId, mediaType);
   });
 }
-var clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
-var normalized = (value) => clean(value).toLowerCase().replace(/\(\d{4}\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-function absolute(url, base) {
-  try {
-    return new URL(url, base).toString();
-  } catch (_) {
-    return "";
-  }
+function clean(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 function qualityFrom(value) {
-  const match = clean(value).match(/\b(?:2160p?|4k|1080p?|720p?|480p?|360p?)\b/i);
+  const match = clean(value).match(/(?:2160p?|4k|1080p?|720p?|480p?|360p?)/i);
   if (!match)
     return "Unknown";
   return /2160|4k/i.test(match[0]) ? "4K" : `${match[0].match(/\d+/)[0]}p`;
@@ -1208,41 +1602,36 @@ function sizeFrom(value) {
   var _a;
   return (_a = clean(value).match(/\b\d+(?:\.\d+)?\s*(?:GB|MB)(?:\/E)?\b/i)) == null ? void 0 : _a[0];
 }
-function selectResult(results, info, mediaType) {
-  const target = normalized(info.title);
-  return results.find((item) => {
-    const name = normalized(item.name);
-    return (name === target || name.startsWith(`${target} `)) && (!info.year || item.name.includes(String(info.year)) || mediaType === "tv") && (mediaType !== "tv" || /series|season/i.test(`${item.name} ${item.url}`));
-  }) || results.find((item) => {
-    const name = normalized(item.name);
-    return name === target || name.startsWith(`${target} `);
-  }) || null;
+function normalizedTitle(value) {
+  return clean(value).toLowerCase().replace(/\(\d{4}\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
-function matchesEpisode(label, season, episode) {
-  const exact = clean(label).match(/S(?:eason)?\s*0*(\d+)\s*E(?:pisode)?\s*0*(\d+)/i);
-  if (exact)
-    return Number(exact[1]) === Number(season) && Number(exact[2]) === Number(episode);
-  const simple = clean(label).match(/Episode[-\s:]*(\d+)/i);
-  return Boolean(simple && Number(simple[1]) === Number(episode));
+function chooseResult(results, metadata, mediaType) {
+  const target = normalizedTitle(metadata.title);
+  const exact = results.find((result) => {
+    const name = normalizedTitle(result.name);
+    const yearMatches = !metadata.year || String(result.name).includes(String(metadata.year));
+    return (name === target || name.startsWith(`${target} `)) && yearMatches && (mediaType !== "tv" || /season|series/i.test(result.name));
+  });
+  return exact || results.find((result) => normalizedTitle(result.name).startsWith(`${target} `)) || null;
 }
-function makeCandidate(url, anchorLabel, blockLabel, referer) {
-  const hostname = (() => {
-    try {
-      return new URL(url).hostname.toLowerCase();
-    } catch (_) {
-      return "";
-    }
-  })();
-  const resolverType = hostname.includes("hubcloud") ? "hubcloud" : hostname.includes("hubdrive") ? "hubdrive" : null;
+function routesFromBlock($, heading) {
+  return $(heading).next().find("a[href]").map((_, anchor) => ({
+    url: $(anchor).attr("href"),
+    label: clean($(anchor).text())
+  })).get().filter((route) => route.url && !/batch|zip/i.test(route.label));
+}
+function candidate(route, quality, size, referer, label) {
+  const value = `${route.label} ${route.url}`;
+  const resolverType = /vcloud/i.test(route.url) ? "vcloud" : /hubcloud/i.test(route.url) ? "hubcloud" : /gdflix|gdlink/i.test(route.url) ? "gdflix" : /hubcloud/i.test(value) ? "hubcloud" : /gdflix|gdlink/i.test(value) ? "gdflix" : null;
   if (!resolverType)
     return null;
   return {
-    provider: "4KHDHub",
-    source: resolverType === "hubcloud" ? "HubCloud" : "HubDrive",
-    quality: qualityFrom(blockLabel),
-    size: sizeFrom(blockLabel),
-    url,
-    label: blockLabel,
+    provider: "Movies4u",
+    source: resolverType === "hubcloud" ? "HubCloud" : resolverType === "gdflix" ? "GDFlix" : "VCloud",
+    quality,
+    size,
+    url: route.url,
+    label,
     referer,
     headers: __spreadProps(__spreadValues({}, HEADERS2), { Referer: referer }),
     resolverType
@@ -1252,32 +1641,67 @@ function discoverCandidates2(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
     if (!tmdbId || !["movie", "tv"].includes(mediaType))
       return [];
+    if (mediaType === "tv" && (!season || !episode))
+      return [];
     try {
-      const [base, info] = yield Promise.all([getBaseUrl(), metadata(tmdbId, mediaType)]);
-      const $search = cheerio3.load(yield text(`${base}/?s=${encodeURIComponent(info.title)}`, base));
-      const results = $search("div.card-grid a, article a").map((_, anchor) => ({
-        name: clean($search(anchor).find("h2,h3").first().text() || $search(anchor).attr("title") || $search(anchor).text()),
-        url: absolute($search(anchor).attr("href"), base)
-      })).get().filter((item) => item.name && item.url);
-      const selected = selectResult(results, info, mediaType);
-      if (!selected)
+      const [base, metadata] = yield Promise.all([getBaseUrl(), getMetadata2(tmdbId, mediaType)]);
+      if (!metadata.title)
         return [];
-      const $ = cheerio3.load(yield text(selected.url, base));
-      const selector = mediaType === "tv" ? "div.episode-download-item" : "div.download-item";
-      const candidates = [];
-      $(selector).each((_, block) => {
-        const label = clean($(block).text());
-        if (mediaType === "tv" && !matchesEpisode(label, season, episode))
+      const $search = cheerio3.load(yield text(`${base}/?s=${encodeURIComponent(metadata.title)}`, base));
+      const results = $search("article").map((_, article) => {
+        const anchor = $search(article).find("h2 a, h3 a").first();
+        return { name: clean(anchor.text()), url: anchor.attr("href") };
+      }).get().filter((result) => result.url && result.name);
+      const match = chooseResult(results, metadata, mediaType);
+      if (!match)
+        return [];
+      const $detail = cheerio3.load(yield text(match.url, base));
+      const releasePages = [];
+      $detail("div.download-links-div h4, div.downloads-btns-div h4, h4").each((_, heading) => {
+        const label = clean($detail(heading).text());
+        if (mediaType === "tv" && !new RegExp(`season\\s*0?${Number(season)}(?:\\D|$)`, "i").test(label))
           return;
-        $(block).find("a[href]").each((__, anchor) => {
-          const url = absolute($(anchor).attr("href"), selected.url);
-          const item = makeCandidate(url, clean($(anchor).text()), label, selected.url);
-          if (item)
-            candidates.push(item);
-        });
+        const quality = qualityFrom(label);
+        if (quality === "Unknown")
+          return;
+        for (const route of routesFromBlock($detail, heading)) {
+          if (/m4ulinks\./i.test(route.url))
+            releasePages.push(__spreadProps(__spreadValues({}, route), { quality, size: sizeFrom(label), label }));
+        }
       });
+      const pageCache = /* @__PURE__ */ new Map();
+      const getReleasePage = (url) => {
+        if (!pageCache.has(url))
+          pageCache.set(url, text(url, match.url));
+        return pageCache.get(url);
+      };
+      const discovered = yield mapConcurrent2(releasePages, 4, (release) => __async(this, null, function* () {
+        try {
+          const $page = cheerio3.load(yield getReleasePage(release.url));
+          const routes = [];
+          if (mediaType === "tv") {
+            $page("h4, h5").each((_, heading) => {
+              const headingText = clean($page(heading).text());
+              const matchEpisode = headingText.match(/episodes?\s*:\s*0*(\d+)/i);
+              if (!matchEpisode || Number(matchEpisode[1]) !== Number(episode))
+                return;
+              routes.push(...routesFromBlock($page, heading));
+            });
+          } else {
+            $page("h4, h5").each((_, heading) => {
+              const headingText = clean($page(heading).text());
+              if (qualityFrom(headingText) !== release.quality)
+                return;
+              routes.push(...routesFromBlock($page, heading));
+            });
+          }
+          return routes.map((route) => candidate(route, release.quality, release.size, release.url, release.label)).filter(Boolean);
+        } catch (_) {
+          return [];
+        }
+      }));
       const seen = /* @__PURE__ */ new Set();
-      return candidates.filter((item) => {
+      return discovered.flat().filter((item) => {
         const key = `${item.quality}|${item.source}|${item.url}`;
         if (seen.has(key))
           return false;
@@ -1285,69 +1709,22 @@ function discoverCandidates2(tmdbId, mediaType, season = 1, episode = 1) {
         return true;
       });
     } catch (error) {
-      console.log(`[4KHDHub Candidates] ${(error == null ? void 0 : error.message) || error}`);
+      console.log(`[Movies4u Candidates] ${(error == null ? void 0 : error.message) || error}`);
       return [];
     }
   });
 }
-function resolveHubDrive(candidate) {
+function resolveCandidate2(item) {
   return __async(this, null, function* () {
-    var _a;
-    try {
-      const res = yield fetch(candidate.url, { headers: __spreadProps(__spreadValues({}, HEADERS2), { Referer: candidate.referer }) });
-      if (!res.ok)
-        return [];
-      const html = yield res.text();
-      if (/file not found|404 not found|deleted|login\.php\?action=logout/i.test(html))
-        return [];
-      if (res.status === 403 || /just a moment|cf-chl|turnstile/i.test(html))
-        return [];
-      const $ = cheerio3.load(html);
-      const btnHref = $('a.btn[href], a#download[href], a[href*="hubcloud"]').first().attr("href");
-      if (!btnHref)
-        return [];
-      const targetUrl = absolute(btnHref, res.url || candidate.url);
-      if (targetUrl.includes("hubcloud")) {
-        const resolver = moviesDrive.resolveCandidate || ((_a = moviesDrive.default) == null ? void 0 : _a.resolveCandidate);
-        if (typeof resolver !== "function")
-          return [];
-        const streams = yield resolver(__spreadProps(__spreadValues({}, candidate), {
-          url: targetUrl,
-          source: "HubDrive HubCloud",
-          resolverType: "hubcloud"
-        }));
-        return (streams || []).map((stream) => __spreadProps(__spreadValues({}, stream), { provider: "4KHDHub" }));
-      }
-      if (/^https?:\/\//i.test(targetUrl) && !/html/i.test(targetUrl)) {
-        return [__spreadValues({
-          name: `4KHDHub \u2022 ${candidate.quality} \u2022 HubDrive Direct`,
-          url: targetUrl,
-          quality: candidate.quality,
-          source: "HubDrive Direct",
-          provider: "4KHDHub"
-        }, candidate.size ? { size: candidate.size } : {})];
-      }
-    } catch (_) {
-    }
-    return [];
-  });
-}
-function resolveCandidate2(candidate) {
-  return __async(this, null, function* () {
-    var _a;
-    if (!(candidate == null ? void 0 : candidate.url))
-      return [];
-    if (candidate.resolverType === "hubdrive") {
-      return resolveHubDrive(candidate);
-    }
-    if (candidate.resolverType !== "hubcloud")
+    var _a, _b;
+    if (!(item == null ? void 0 : item.url))
       return [];
     try {
-      const resolver = moviesDrive.resolveCandidate || ((_a = moviesDrive.default) == null ? void 0 : _a.resolveCandidate);
+      const resolver = item.resolverType === "vcloud" ? vegaMovies.resolveCandidate || ((_a = vegaMovies.default) == null ? void 0 : _a.resolveCandidate) : moviesDrive.resolveCandidate || ((_b = moviesDrive.default) == null ? void 0 : _b.resolveCandidate);
       if (typeof resolver !== "function")
         return [];
-      const streams = yield resolver(__spreadProps(__spreadValues({}, candidate), { resolverType: "hubcloud" }));
-      return (streams || []).map((stream) => __spreadProps(__spreadValues({}, stream), { provider: "4KHDHub" }));
+      const streams = yield resolver(item);
+      return (streams || []).map((stream) => __spreadProps(__spreadValues({}, stream), { provider: "Movies4u" }));
     } catch (_) {
       return [];
     }
