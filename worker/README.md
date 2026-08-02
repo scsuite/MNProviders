@@ -1,10 +1,11 @@
 # MNProviders Cloudflare Resolver
 
-This Worker runs supported providers in parallel. MoviesDrive, VegaMovies,
-UHDMovies, 4KHDHub and HDHub4u perform complete server-side resolution; their
-results are cached for five minutes because some final media URLs are signed.
-Other complete discovery results are cached for six hours. Video bytes do not pass
-through the Worker.
+This Worker runs supported providers in parallel. VegaMovies, UHDMovies, 4KHDHub
+and HDHub4u perform complete server-side resolution; their results are cached for
+five minutes because some final media URLs are signed. MoviesDrive remains
+device-resolved because its final hosts return zero streams from Cloudflare IPs.
+Other discovery results are cached for six hours. Video bytes do not pass through
+the Worker.
 
 ## Dashboard deployment
 

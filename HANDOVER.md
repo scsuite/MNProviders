@@ -10,11 +10,11 @@ Last updated: 2026-08-02 (Asia/Karachi)
   `https://raw.githubusercontent.com/scsuite/MNProviders/refs/heads/main/manifest.json`
 - Local project folder used during development:
   `C:\Users\AMS-Admin\Desktop\MNProviders`
-- Current repository/manifest version: `1.0.61`
-- Current latest work: Worker-first MoviesDrive, VegaMovies, UHDMovies, 4KHDHub and HDHub4u resolution
+- Current repository/manifest version: `1.0.62`
+- Current latest work: VegaMovies remains Worker-first; MoviesDrive reverted to device resolution after live Worker-IP failure
 - Cloudflare Worker:
   `https://lucky-star-3059.salman-sohail93.workers.dev`
-- Worker source/bundle version prepared: `1.0.18` (manual Cloudflare deployment required)
+- Worker source/bundle version prepared: `1.0.19` (manual Cloudflare deployment required)
 
 The project targets Nuvio on Mobile, Desktop and TV. It contains movie and TV
 providers only; anime/cartoon-only providers are intentionally excluded.
@@ -47,7 +47,7 @@ These requirements must be preserved in future work:
 
 | Provider | Version | Enabled | Types | Main behavior / status |
 |---|---:|---:|---|---|
-| MoviesDrive | 2.1.0 | Yes | Movie, TV | Full Worker-side HubCloud/GDFlix resolution with automatic local fallback. |
+| MoviesDrive | 2.1.1 | Yes | Movie, TV | Device-side HubCloud/GDFlix resolution; Worker discovery may assist the disabled combined provider. |
 | VegaMovies | 1.1.0 | Yes | Movie, TV | Full Worker-side VCloud/FastDL resolution with automatic local fallback. |
 | Movies4u | 1.0.0 | Yes | Movie, TV | HubCloud, GDFlix, VCloud and FastDL routes; working. |
 | 4KHDHub | 1.1.0 | Yes | Movie, TV | Full Worker-side discovery/resolution in parallel; falls back to device when the Worker is blocked or empty. |
@@ -289,20 +289,23 @@ an unprotected legitimate API.
 Expected root response after manually deploying `worker/dist/worker.js`:
 
 ```json
-{"ok":true,"service":"MNProviders Resolver","version":"1.0.18","providers":["moviesdrive","vegamovies","movies4u","4khdhub","hdhub4u","multimovies","castle","uhdmovies"]}
+{"ok":true,"service":"MNProviders Resolver","version":"1.0.19","providers":["moviesdrive","vegamovies","movies4u","4khdhub","hdhub4u","multimovies","castle","uhdmovies"]}
 ```
 
-MoviesDrive, VegaMovies, UHDMovies, 4KHDHub and HDHub4u perform full resolution in
-the Worker. The standalone providers retain a local fallback because some upstreams
-may block Cloudflare datacenter requests. MovieBlast remains device-side and does
-not need the Worker.
+VegaMovies, UHDMovies, 4KHDHub and HDHub4u perform full resolution in the Worker.
+The standalone providers retain a local fallback because some upstreams may block
+Cloudflare datacenter requests. MoviesDrive and MovieBlast resolve on the device.
 
-Pre-deployment source validation for the MoviesDrive/VegaMovies change:
+MoviesDrive/VegaMovies validation history:
 
 - Matrix (movie): VegaMovies returned 17 final streams in about 3.1 seconds.
 - Reacher S01E01: MoviesDrive returned 3 and VegaMovies returned 13 final streams;
   both ran concurrently and completed in about 30 seconds.
 - Successful final results use a five-minute Worker cache because URLs may be signed.
+- After Worker `1.0.18` was deployed, MoviesDrive returned zero streams for both
+  Matrix and Reacher from Cloudflare IPs. Its standalone Worker-first path was
+  therefore removed in `2.1.1` to avoid adding a failed Worker request before the
+  original device resolver. VegaMovies Worker resolution remains enabled.
 
 For a Worker source change:
 
@@ -435,12 +438,12 @@ not evidence that it will work in Nuvio.
 
 - Git branch: `main`
 - Remote: `https://github.com/scsuite/MNProviders.git`
-- Manifest: `1.0.61`
-- MoviesDrive: `2.1.0`
+- Manifest: `1.0.62`
+- MoviesDrive: `2.1.1`
 - VegaMovies: `1.1.0`
 - 4KHDHub: `1.1.0`
 - HDHub4u: `1.1.0`
-- Worker source/bundle: `1.0.18` (manual dashboard deployment required)
+- Worker source/bundle: `1.0.19` (manual dashboard deployment required)
 - Provider tests, validation, sorting tests, generated-bundle syntax checks and
   Worker redirect tests passed for the parallel implementation.
 
