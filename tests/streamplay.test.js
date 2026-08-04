@@ -137,43 +137,28 @@ for (const modulePath of [
 const { getStreams } = require('../src/providers/streamplay');
 
 (async () => {
-  console.log('--- Test Suite 1: Successful Worker Response ---');
+  console.log('--- Device-first StreamPlay Test ---');
   workerUrlCalled = null;
   localVegaDiscoverCalled = false;
   localMDDiscoverCalled = false;
 
   const streams = await getStreams('603', 'movie');
 
-  assert(workerUrlCalled && workerUrlCalled.includes('salman-sohail93.workers.dev/streams'), 'Worker endpoint should be called');
-  console.log('PASS: Worker endpoint was called:', workerUrlCalled);
+  assert.strictEqual(workerUrlCalled, null, 'Normal StreamPlay fetching must not call the Worker');
+  assert.strictEqual(localVegaDiscoverCalled, true, 'Vega discovery should run on the device');
+  assert.strictEqual(localMDDiscoverCalled, true, 'MoviesDrive discovery should run on the device');
+  console.log('PASS: normal fetching used device discovery with zero Worker requests');
 
-  assert.strictEqual(localVegaDiscoverCalled, false, 'Successful Worker Vega discovery should not repeat locally');
-  assert.strictEqual(localMDDiscoverCalled, false, 'Successful Worker MoviesDrive discovery should not repeat locally');
-  console.log('PASS: Successful Worker providers skipped duplicate device discovery');
-
-  assert.strictEqual(streams.length, 3, `Expected 3 total streams (1 Castle direct + 2 resolved candidates), got ${streams.length}`);
+  assert.strictEqual(streams.length, 3, `Expected 3 total device streams (1 Castle + 2 resolved candidates), got ${streams.length}`);
   const castleStream = streams.find(s => s.provider === 'castle');
-  assert(castleStream && castleStream.url === 'https://cdn.castle.test/stream.m3u8', 'Direct Castle stream should be preserved without re-resolution');
-  console.log('PASS: Direct Castle stream preserved & device candidates resolved');
+  assert(castleStream && castleStream.url === 'https://cdn.castle.test/fallback.m3u8', 'Device Castle stream should be preserved');
+  console.log('PASS: Device Castle stream and resolved candidates preserved');
 
   const qualities = streams.map(s => s.quality);
-  assert.deepStrictEqual(qualities, ['4K', '1080p', '720p'], `Expected qualities ['4K', '1080p', '720p'], got ${JSON.stringify(qualities)}`);
-  console.log('PASS: Global quality order correct (4K > 1080p > 720p)');
+  assert.deepStrictEqual(qualities, ['4K', '720p', '720p'], `Expected qualities ['4K', '720p', '720p'], got ${JSON.stringify(qualities)}`);
+  console.log('PASS: Global quality order remains correct');
 
-  console.log('\n--- Test Suite 2: Worker Failure activates Local Fallback ---');
-  workerUrlCalled = null;
-  localVegaDiscoverCalled = false;
-  localMDDiscoverCalled = false;
-
-  const fallbackStreams = await getStreams('603?fail=true', 'movie');
-
-  assert(workerUrlCalled && decodeURIComponent(workerUrlCalled).includes('fail=true'), 'Worker endpoint was attempted');
-
-  assert.strictEqual(localVegaDiscoverCalled, true, 'Local Vega discoverCandidates SHOULD be called on Worker failure');
-  assert.strictEqual(localMDDiscoverCalled, true, 'Local MoviesDrive discoverCandidates SHOULD be called on Worker failure');
-  console.log('PASS: Worker failure activated local discovery fallback seamlessly');
-
-  console.log('\n✅ ALL STREAMPLAY WORKER-FIRST & FALLBACK TESTS PASSED!');
+  console.log('\n✅ STREAMPLAY DEVICE-FIRST TEST PASSED!');
 })().catch((err) => {
   console.error('❌ TEST FAILURE:', err);
   process.exit(1);

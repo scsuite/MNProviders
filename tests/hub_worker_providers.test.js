@@ -33,8 +33,8 @@ const hdHub4u = require('../src/providers/hdhub4u');
 
 (async () => {
   const [fourkStreams, hdStreams] = await Promise.all([
-    fourkHDHub.getStreams('603', 'movie'),
-    hdHub4u.getStreams('603', 'movie')
+    fourkHDHub.fetchWorkerStreams('603', 'movie'),
+    hdHub4u.fetchWorkerStreams('603', 'movie')
   ]);
 
   assert.strictEqual(requests.length, 2, 'Each standalone provider should make exactly one Worker request');
@@ -44,7 +44,7 @@ const hdHub4u = require('../src/providers/hdhub4u');
   assert.strictEqual(hdStreams.length, 1);
   assert.strictEqual(fourkStreams[0].provider, '4KHDHub');
   assert.strictEqual(hdStreams[0].provider, 'HDHub4u');
-  console.log('PASS: 4KHDHub and HDHub4u each use one Worker request on successful resolution');
+  console.log('PASS: optional 4KHDHub and HDHub4u Worker diagnostics remain available');
 })().catch(error => {
   console.error('FAIL:', error);
   process.exitCode = 1;

@@ -1184,8 +1184,7 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
     const type = normalizeType(mediaType);
     if (!tmdbId || type === "tv" && (!season || !episode))
       return [];
-    const workerStreams = yield fetchWorkerStreams(tmdbId, type, season, episode);
-    return workerStreams ? (0, import_streams.uniqueExactStreams)(workerStreams) : getStreamsLocal(tmdbId, type, season, episode);
+    return getStreamsLocal(tmdbId, type, season, episode);
   });
 }
 var moviesdrive_default = { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };

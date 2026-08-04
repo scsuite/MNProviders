@@ -28,17 +28,16 @@ global.fetch = async (url) => {
   };
 };
 
-const { getStreams } = require('../src/providers/uhdmovies');
+const { fetchWorkerStreams } = require('../src/providers/uhdmovies');
 
 (async () => {
-  const streams = await getStreams('1124', 'movie');
+  const streams = await fetchWorkerStreams('1124', 'movie');
   assert.strictEqual(requests.length, 1, 'UHDMovies should make one device-side request when Worker succeeds');
   assert(requests[0].includes('providers=uhdmovies'), 'Worker request must select only UHDMovies');
   assert(requests[0].includes('timeout=30000'), 'Worker request must allow the full UHD resolver deadline');
   assert.strictEqual(streams.length, 2, 'Both distinct Worker streams must be preserved');
-  assert.deepStrictEqual(streams.map(stream => stream.seekable), [true, false], 'Resume must sort before Google No Seek');
-  assert(streams[1].name.includes('(No Seek)'), 'Google fallback must retain its No Seek label');
-  console.log('PASS: UHDMovies uses one Worker request and preserves Resume before Google fallback');
+  assert.deepStrictEqual(streams.map(stream => stream.source), ['DriveSeed Instant', 'DriveSeed Resume']);
+  console.log('PASS: optional UHDMovies Worker diagnostic preserves both direct links');
 })().catch(error => {
   console.error('FAIL:', error);
   process.exitCode = 1;

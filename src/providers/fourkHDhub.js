@@ -198,8 +198,7 @@ async function fetchWorkerStreams(tmdbId, mediaType, season, episode) {
 async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
   const type = mediaType === 'tv' ? 'tv' : 'movie';
   if (!tmdbId || (type === 'tv' && (!season || !episode))) return [];
-  const workerStreams = await fetchWorkerStreams(tmdbId, type, season, episode);
-  return workerStreams ? uniqueExactStreams(workerStreams) : getStreamsLocal(tmdbId, type, season, episode);
+  return getStreamsLocal(tmdbId, type, season, episode);
 }
 
 module.exports = { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };

@@ -31,8 +31,8 @@ global.fetch = async (url) => {
   const moviesDrive = await import('../src/moviesdrive/index.js');
   const vegaMovies = require('../src/providers/vegamovies');
   const [moviesDriveStreams, vegaStreams] = await Promise.all([
-    moviesDrive.getStreams('603', 'movie'),
-    vegaMovies.getStreams('603', 'movie')
+    moviesDrive.fetchWorkerStreams('603', 'movie'),
+    vegaMovies.fetchWorkerStreams('603', 'movie')
   ]);
 
   assert.strictEqual(requests.length, 2, 'Each provider should make exactly one Worker request');
@@ -42,7 +42,7 @@ global.fetch = async (url) => {
   assert.strictEqual(vegaStreams.length, 1);
   assert.strictEqual(moviesDriveStreams[0].provider, 'MoviesDrive');
   assert.strictEqual(vegaStreams[0].provider, 'VegaMovies');
-  console.log('PASS: MoviesDrive and VegaMovies each use one Worker request on successful resolution');
+  console.log('PASS: optional MoviesDrive and VegaMovies Worker diagnostics remain available');
 })().catch(error => {
   console.error('FAIL:', error);
   process.exitCode = 1;

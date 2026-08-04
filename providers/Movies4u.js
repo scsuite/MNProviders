@@ -1190,8 +1190,7 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
     const type = normalizeType(mediaType);
     if (!tmdbId || type === "tv" && (!season || !episode))
       return [];
-    const workerStreams = yield fetchWorkerStreams(tmdbId, type, season, episode);
-    return workerStreams ? (0, import_streams.uniqueExactStreams)(workerStreams) : getStreamsLocal(tmdbId, type, season, episode);
+    return getStreamsLocal(tmdbId, type, season, episode);
   });
 }
 var import_cheerio_without_node_native2, import_streams, import_domains3, import_metadata, DOMAINS_URL, moviesdrive_default;
@@ -1635,8 +1634,7 @@ var require_vegamovies = __commonJS({
         const type = /^(tv|series|show)$/i.test(String(mediaType || "")) ? "tv" : "movie";
         if (!tmdbId || type === "tv" && (!season || !episode))
           return [];
-        const workerStreams = yield fetchWorkerStreams2(tmdbId, type, season, episode);
-        return workerStreams ? uniqueExactStreams3(workerStreams) : getStreamsLocal2(tmdbId, type, season, episode);
+        return getStreamsLocal2(tmdbId, type, season, episode);
       });
     }
     module2.exports = { discoverCandidates: discoverCandidates3, resolveCandidate: resolveCandidate3, getStreamsLocal: getStreamsLocal2, fetchWorkerStreams: fetchWorkerStreams2, getStreams: getStreams3 };

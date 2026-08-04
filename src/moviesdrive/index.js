@@ -247,10 +247,7 @@ export async function fetchWorkerStreams(tmdbId, mediaType, season = 1, episode 
 export async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
   const type = normalizeType(mediaType);
   if (!tmdbId || (type === 'tv' && (!season || !episode))) return [];
-  const workerStreams = await fetchWorkerStreams(tmdbId, type, season, episode);
-  return workerStreams
-    ? uniqueExactStreams(workerStreams)
-    : getStreamsLocal(tmdbId, type, season, episode);
+  return getStreamsLocal(tmdbId, type, season, episode);
 }
 
 export default { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };

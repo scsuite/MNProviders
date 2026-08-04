@@ -465,8 +465,6 @@ async function fetchWorkerStreams(tmdbId, mediaType, season, episode) {
 async function getStreams(tmdbId, mediaType = 'movie', season = 1, episode = 1) {
   const type = mediaType === 'tv' ? 'tv' : 'movie';
   if (!tmdbId || (type === 'tv' && (!season || !episode))) return [];
-  const workerStreams = await fetchWorkerStreams(tmdbId, type, season, episode);
-  if (workerStreams !== null) return uniqueExactStreams(workerStreams);
   return getStreamsLocal(tmdbId, type, season, episode);
 }
 

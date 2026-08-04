@@ -960,8 +960,7 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
     const type = /^(tv|series|show)$/i.test(String(mediaType || "")) ? "tv" : "movie";
     if (!tmdbId || type === "tv" && (!season || !episode))
       return [];
-    const workerStreams = yield fetchWorkerStreams(tmdbId, type, season, episode);
-    return workerStreams ? uniqueExactStreams(workerStreams) : getStreamsLocal(tmdbId, type, season, episode);
+    return getStreamsLocal(tmdbId, type, season, episode);
   });
 }
 module.exports = { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };

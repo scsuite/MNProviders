@@ -11,7 +11,6 @@ const DOMAINS = require('../config/domains');
 const WORKER_BASE = DOMAINS.WORKER;
 const CANDIDATE_TIMEOUT_MS = 4500;
 const DEVICE_DISCOVERY_TIMEOUT_MS = 6500;
-const FALLBACK_RESOLUTION_TIMEOUT_MS = 2500;
 const DEVICE_RESOLUTION_CONCURRENCY = 32;
 const DEVICE_PROVIDER_IDS = ['moviesdrive', 'vegamovies', 'movies4u', '4khdhub', 'multimovies', 'hdhub4u'];
 
@@ -118,10 +117,6 @@ function resolveCandidateBounded(candidate) {
   return withTimeout(resolveDeviceCandidate(candidate));
 }
 
-function resolveFallbackCandidate(candidate) {
-  return withTimeout(resolveDeviceCandidate(candidate), FALLBACK_RESOLUTION_TIMEOUT_MS);
-}
-
 function deviceDiscoverers() {
   return {
     moviesdrive: mdModule.discoverCandidates || mdModule.default?.discoverCandidates,
@@ -158,51 +153,7 @@ async function runLocalDiscoveryFallback(tmdbId, mediaType, season, episode) {
 async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
   if (!tmdbId || (mediaType !== 'movie' && mediaType !== 'tv')) return [];
   if (mediaType === 'tv' && (!season || !episode)) return [];
-
-  const workerData = await fetchWorkerData(tmdbId, mediaType, season, episode);
-
-  let rawStreams = [];
-  if (workerData) {
-    const directStreams = (workerData.directStreams || []).map(s => ({
-      ...s,
-      provider: s.provider || 'castle',
-      source: s.source || s.name || 'Castle'
-    }));
-
-    const fallbackProviderIds = workerData.providers
-      ? DEVICE_PROVIDER_IDS.filter(id => {
-          const state = workerData.providers[id];
-          const failed = Boolean(state?.error) || /^(blocked|timeout|error)$/i.test(String(state?.status || ''));
-          const devicePreferredEmpty = id === '4khdhub' && Number(state?.count || 0) === 0;
-          return !state || failed || devicePreferredEmpty;
-        })
-      : DEVICE_PROVIDER_IDS;
-    // Successful Worker discovery remains fast. Only empty/blocked/error
-    // providers repeat discovery on the current device's network IP.
-    const workerResolutionJob = mapConcurrent(workerData.candidates || [], DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded);
-    const localFallbackJob = (async () => {
-      const localCandidates = await discoverOnDevice(fallbackProviderIds, tmdbId, mediaType, season, episode);
-      return mapConcurrent(localCandidates, DEVICE_RESOLUTION_CONCURRENCY, resolveFallbackCandidate);
-    })();
-    const [workerResolved, localResolved] = await Promise.all([workerResolutionJob, localFallbackJob]);
-    const resolvedCandidates = [...workerResolved, ...localResolved];
-    rawStreams = [
-      ...directStreams,
-      ...resolvedCandidates.flat().filter(Boolean)
-    ];
-  } else {
-    const deviceCandidates = await discoverOnDevice(DEVICE_PROVIDER_IDS, tmdbId, mediaType, season, episode);
-    const [resolvedCandidates, castleStreams] = await Promise.all([
-      mapConcurrent(deviceCandidates, DEVICE_RESOLUTION_CONCURRENCY, resolveCandidateBounded),
-      withTimeout(typeof getCastleStreams === 'function' ? getCastleStreams(tmdbId, mediaType, season, episode) : [], DEVICE_DISCOVERY_TIMEOUT_MS)
-    ]);
-    rawStreams = [
-      ...(Array.isArray(castleStreams) ? castleStreams.map(stream => ({ ...stream, provider: 'castle', source: stream.source || stream.name || 'Castle' })) : []),
-      ...resolvedCandidates.flat().filter(Boolean)
-    ];
-  }
-
-  return uniqueExactStreams(rawStreams);
+  return uniqueExactStreams(await runLocalDiscoveryFallback(tmdbId, mediaType, season, episode));
 }
 
 module.exports = { getStreams, WORKER_BASE, fetchWorkerData, resolveDeviceCandidate, resolveCandidateBounded, discoverOnDevice, runLocalDiscoveryFallback };
