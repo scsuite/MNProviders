@@ -20,12 +20,50 @@ var require_domains = __commonJS({
       HDHUB4U_SEARCH_API: "https://search.pingora.fyi/collections/post/documents/search",
       MULTIMOVIES_FALLBACK: "https://multimovies.makeup",
       CASTLE_API: "https://api.hlowb.com",
+      MOVIEBLAST_API: "https://app.cloud-mb.xyz",
+      UHDMOVIES_FALLBACK: "https://uhdmovies.casa",
       NEXDRIVE: "https://nexdrive.fit",
       HUBCLOUD: "https://hubcloud.cx",
       VCLOUD: "https://vcloud.zip",
       FASTDL: "https://fastdl.zip",
       GDFLIX_MIRRORS: ["https://new3.gdflix.cfd", "https://new2.gdflix.cfd"]
     });
+  }
+});
+
+// src/shared/metadata.js
+var require_metadata = __commonJS({
+  "src/shared/metadata.js"(exports2, module2) {
+    var DOMAINS = require_domains();
+    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+    var cache = /* @__PURE__ */ new Map();
+    function resolveTmdbId(inputId, type) {
+      const value = String(inputId || "").replace(/^tmdb:/i, "");
+      if (!/^tt\d+$/i.test(value))
+        return Promise.resolve(value);
+      return fetch(`${DOMAINS.TMDB_API}/find/${encodeURIComponent(value)}?api_key=${TMDB_KEY}&external_source=imdb_id`).then((response) => response.ok ? response.json() : null).then((data) => {
+        var _a;
+        const matches = type === "tv" ? data == null ? void 0 : data.tv_results : data == null ? void 0 : data.movie_results;
+        return ((_a = matches == null ? void 0 : matches[0]) == null ? void 0 : _a.id) ? String(matches[0].id) : null;
+      }).catch(() => null);
+    }
+    function getMetadata(tmdbId, mediaType) {
+      const type = mediaType === "tv" ? "tv" : "movie";
+      const key = `${type}:${tmdbId}`;
+      if (!cache.has(key)) {
+        cache.set(key, resolveTmdbId(tmdbId, type).then((resolvedId) => resolvedId ? fetch(`${DOMAINS.TMDB_API}/${type}/${resolvedId}?api_key=${TMDB_KEY}&append_to_response=external_ids`) : null).then((response) => (response == null ? void 0 : response.ok) ? response.json() : null).then((data) => {
+          var _a;
+          return data ? {
+            title: type === "tv" ? data.name : data.title,
+            year: Number(String(type === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null,
+            imdbId: ((_a = data.external_ids) == null ? void 0 : _a.imdb_id) || data.imdb_id || (/^tt\d+$/i.test(String(tmdbId)) ? String(tmdbId) : null),
+            tmdbId: String(data.id)
+          } : null;
+        }).catch(() => null));
+      }
+      return cache.get(key);
+    }
+    module2.exports = { getMetadata, resolveTmdbId };
   }
 });
 
@@ -66,8 +104,8 @@ var __async = (__this, __arguments, generator) => {
     step((generator = generator.apply(__this, __arguments)).next());
   });
 };
-var TMDB_API_KEY = "439c478a771f35c05022f9feabcca01c";
 var DOMAIN_CONFIG = require_domains();
+var sharedMetadata = require_metadata();
 var TMDB_BASE_URL = DOMAIN_CONFIG.TMDB_API;
 var CASTLE_BASE = DOMAIN_CONFIG.CASTLE_API;
 var PKG = "com.external.castle";
@@ -135,17 +173,13 @@ function extractDataBlock(obj) {
 }
 function getTMDBDetails(tmdbId, mediaType) {
   return __async(this, null, function* () {
-    const endpoint = mediaType === "tv" ? "tv" : "movie";
-    const url = `${TMDB_BASE_URL}/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`;
-    const response = yield makeRequest(url);
-    const data = yield response.json();
-    const title = mediaType === "tv" ? data.name : data.title;
-    const releaseDate = mediaType === "tv" ? data.first_air_date : data.release_date;
-    const year = releaseDate ? parseInt(releaseDate.split("-")[0]) : null;
+    const data = yield sharedMetadata.getMetadata(tmdbId, mediaType);
+    if (!data || !data.title)
+      throw new Error(`TMDB metadata not found for ${tmdbId}`);
     return {
-      title,
-      year,
-      tmdbId
+      title: data.title,
+      year: data.year,
+      tmdbId: data.tmdbId || tmdbId
     };
   });
 }

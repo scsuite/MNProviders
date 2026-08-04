@@ -97,12 +97,50 @@ var require_domains = __commonJS({
       HDHUB4U_SEARCH_API: "https://search.pingora.fyi/collections/post/documents/search",
       MULTIMOVIES_FALLBACK: "https://multimovies.makeup",
       CASTLE_API: "https://api.hlowb.com",
+      MOVIEBLAST_API: "https://app.cloud-mb.xyz",
+      UHDMOVIES_FALLBACK: "https://uhdmovies.casa",
       NEXDRIVE: "https://nexdrive.fit",
       HUBCLOUD: "https://hubcloud.cx",
       VCLOUD: "https://vcloud.zip",
       FASTDL: "https://fastdl.zip",
       GDFLIX_MIRRORS: ["https://new3.gdflix.cfd", "https://new2.gdflix.cfd"]
     });
+  }
+});
+
+// src/shared/metadata.js
+var require_metadata = __commonJS({
+  "src/shared/metadata.js"(exports2, module2) {
+    var DOMAINS5 = require_domains();
+    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
+    var cache = /* @__PURE__ */ new Map();
+    function resolveTmdbId(inputId, type) {
+      const value = String(inputId || "").replace(/^tmdb:/i, "");
+      if (!/^tt\d+$/i.test(value))
+        return Promise.resolve(value);
+      return fetch(`${DOMAINS5.TMDB_API}/find/${encodeURIComponent(value)}?api_key=${TMDB_KEY}&external_source=imdb_id`).then((response) => response.ok ? response.json() : null).then((data) => {
+        var _a;
+        const matches = type === "tv" ? data == null ? void 0 : data.tv_results : data == null ? void 0 : data.movie_results;
+        return ((_a = matches == null ? void 0 : matches[0]) == null ? void 0 : _a.id) ? String(matches[0].id) : null;
+      }).catch(() => null);
+    }
+    function getMetadata2(tmdbId, mediaType) {
+      const type = mediaType === "tv" ? "tv" : "movie";
+      const key = `${type}:${tmdbId}`;
+      if (!cache.has(key)) {
+        cache.set(key, resolveTmdbId(tmdbId, type).then((resolvedId) => resolvedId ? fetch(`${DOMAINS5.TMDB_API}/${type}/${resolvedId}?api_key=${TMDB_KEY}&append_to_response=external_ids`) : null).then((response) => (response == null ? void 0 : response.ok) ? response.json() : null).then((data) => {
+          var _a;
+          return data ? {
+            title: type === "tv" ? data.name : data.title,
+            year: Number(String(type === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null,
+            imdbId: ((_a = data.external_ids) == null ? void 0 : _a.imdb_id) || data.imdb_id || (/^tt\d+$/i.test(String(tmdbId)) ? String(tmdbId) : null),
+            tmdbId: String(data.id)
+          } : null;
+        }).catch(() => null));
+      }
+      return cache.get(key);
+    }
+    module2.exports = { getMetadata: getMetadata2, resolveTmdbId };
   }
 });
 
@@ -146,8 +184,8 @@ var require_castle = __commonJS({
         step((generator = generator.apply(__this, __arguments)).next());
       });
     };
-    var TMDB_API_KEY2 = "439c478a771f35c05022f9feabcca01c";
     var DOMAIN_CONFIG = require_domains();
+    var sharedMetadata2 = require_metadata();
     var TMDB_BASE_URL = DOMAIN_CONFIG.TMDB_API;
     var CASTLE_BASE = DOMAIN_CONFIG.CASTLE_API;
     var PKG = "com.external.castle";
@@ -215,17 +253,13 @@ var require_castle = __commonJS({
     }
     function getTMDBDetails(tmdbId, mediaType) {
       return __async2(this, null, function* () {
-        const endpoint = mediaType === "tv" ? "tv" : "movie";
-        const url = `${TMDB_BASE_URL}/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY2}&append_to_response=external_ids`;
-        const response = yield makeRequest(url);
-        const data = yield response.json();
-        const title = mediaType === "tv" ? data.name : data.title;
-        const releaseDate = mediaType === "tv" ? data.first_air_date : data.release_date;
-        const year = releaseDate ? parseInt(releaseDate.split("-")[0]) : null;
+        const data = yield sharedMetadata2.getMetadata(tmdbId, mediaType);
+        if (!data || !data.title)
+          throw new Error(`TMDB metadata not found for ${tmdbId}`);
         return {
-          title,
-          year,
-          tmdbId
+          title: data.title,
+          year: data.year,
+          tmdbId: data.tmdbId || tmdbId
         };
       });
     }
@@ -1157,31 +1191,6 @@ var require_streams = __commonJS({
   }
 });
 
-// src/shared/metadata.js
-var require_metadata = __commonJS({
-  "src/shared/metadata.js"(exports2, module2) {
-    var DOMAINS5 = require_domains();
-    var TMDB_KEY = "439c478a771f35c05022f9feabcca01c";
-    var cache = /* @__PURE__ */ new Map();
-    function getMetadata2(tmdbId, mediaType) {
-      const type = mediaType === "tv" ? "tv" : "movie";
-      const key = `${type}:${tmdbId}`;
-      if (!cache.has(key)) {
-        cache.set(key, fetch(`${DOMAINS5.TMDB_API}/${type}/${tmdbId}?api_key=${TMDB_KEY}&append_to_response=external_ids`).then((response) => response.ok ? response.json() : null).then((data) => {
-          var _a;
-          return data ? {
-            title: type === "tv" ? data.name : data.title,
-            year: Number(String(type === "tv" ? data.first_air_date : data.release_date).slice(0, 4)) || null,
-            imdbId: ((_a = data.external_ids) == null ? void 0 : _a.imdb_id) || data.imdb_id || null
-          } : null;
-        }).catch(() => null));
-      }
-      return cache.get(key);
-    }
-    module2.exports = { getMetadata: getMetadata2 };
-  }
-});
-
 // src/providers/vegamovies.js
 var require_vegamovies = __commonJS({
   "src/providers/vegamovies.js"(exports2, module2) {
@@ -1427,8 +1436,8 @@ var require_vegamovies = __commonJS({
         }
       });
     }
-    function getStreams3(_0, _1, _2, _3) {
-      return __async(this, arguments, function* (tmdbId, mediaType, season, episode, options = {}) {
+    function getStreamsLocal2(tmdbId, mediaType, season, episode) {
+      return __async(this, null, function* () {
         try {
           const candidates = yield discoverCandidates2(tmdbId, mediaType, season, episode);
           const resolvedResults = yield mapConcurrent3(candidates, 4, resolveCandidate2);
@@ -1440,7 +1449,44 @@ var require_vegamovies = __commonJS({
         }
       });
     }
-    module2.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreams: getStreams3 };
+    function fetchWorkerStreams2(tmdbId, mediaType, season, episode) {
+      return __async(this, null, function* () {
+        var _a;
+        try {
+          const query = new URLSearchParams({
+            tmdbId: String(tmdbId).replace(/^tmdb:/i, ""),
+            type: mediaType,
+            season: String(season || 1),
+            episode: String(episode || 1),
+            providers: "vegamovies",
+            timeout: "30000"
+          });
+          const response = yield fetch(`${DOMAINS5.WORKER}/streams?${query.toString()}`, {
+            headers: { Accept: "application/json" }
+          });
+          if (!response.ok)
+            return null;
+          const data = yield response.json();
+          const state = (_a = data == null ? void 0 : data.providers) == null ? void 0 : _a.vegamovies;
+          if (!(data == null ? void 0 : data.ok) || (state == null ? void 0 : state.status) !== "success")
+            return null;
+          const streams = (Array.isArray(data.directStreams) ? data.directStreams : []).filter((stream) => String((stream == null ? void 0 : stream.provider) || "").toLowerCase() === "vegamovies");
+          return streams.length ? streams : null;
+        } catch (_) {
+          return null;
+        }
+      });
+    }
+    function getStreams3(tmdbId, mediaType, season = 1, episode = 1) {
+      return __async(this, null, function* () {
+        const type = /^(tv|series|show)$/i.test(String(mediaType || "")) ? "tv" : "movie";
+        if (!tmdbId || type === "tv" && (!season || !episode))
+          return [];
+        const workerStreams = yield fetchWorkerStreams2(tmdbId, type, season, episode);
+        return workerStreams ? uniqueExactStreams3(workerStreams) : getStreamsLocal2(tmdbId, type, season, episode);
+      });
+    }
+    module2.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreamsLocal: getStreamsLocal2, fetchWorkerStreams: fetchWorkerStreams2, getStreams: getStreams3 };
   }
 });
 
@@ -1806,7 +1852,9 @@ var moviesdrive_exports = {};
 __export(moviesdrive_exports, {
   default: () => moviesdrive_default,
   discoverCandidates: () => discoverCandidates,
+  fetchWorkerStreams: () => fetchWorkerStreams,
   getStreams: () => getStreams,
+  getStreamsLocal: () => getStreamsLocal,
   resolveCandidate: () => resolveCandidate
 });
 function normalizeType(value) {
@@ -2023,7 +2071,7 @@ function resolveCandidate(candidate) {
     }
   });
 }
-function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+function getStreamsLocal(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
     try {
       const candidates = yield discoverCandidates(tmdbId, mediaType, season, episode);
@@ -2036,6 +2084,44 @@ function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
     }
   });
 }
+function fetchWorkerStreams(tmdbId, mediaType, season = 1, episode = 1) {
+  return __async(this, null, function* () {
+    var _a;
+    try {
+      const type = normalizeType(mediaType);
+      const query = new URLSearchParams({
+        tmdbId: String(tmdbId).replace(/^tmdb:/i, ""),
+        type,
+        season: String(season || 1),
+        episode: String(episode || 1),
+        providers: "moviesdrive",
+        timeout: "40000"
+      });
+      const response = yield fetch(`${import_domains3.default.WORKER}/streams?${query.toString()}`, {
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok)
+        return null;
+      const data = yield response.json();
+      const state = (_a = data == null ? void 0 : data.providers) == null ? void 0 : _a.moviesdrive;
+      if (!(data == null ? void 0 : data.ok) || (state == null ? void 0 : state.status) !== "success")
+        return null;
+      const streams = (Array.isArray(data.directStreams) ? data.directStreams : []).filter((stream) => String((stream == null ? void 0 : stream.provider) || "").toLowerCase() === "moviesdrive");
+      return streams.length ? streams : null;
+    } catch (_) {
+      return null;
+    }
+  });
+}
+function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
+  return __async(this, null, function* () {
+    const type = normalizeType(mediaType);
+    if (!tmdbId || type === "tv" && (!season || !episode))
+      return [];
+    const workerStreams = yield fetchWorkerStreams(tmdbId, type, season, episode);
+    return workerStreams ? (0, import_streams.uniqueExactStreams)(workerStreams) : getStreamsLocal(tmdbId, type, season, episode);
+  });
+}
 var import_cheerio_without_node_native2, import_streams, import_domains3, import_metadata, DOMAINS_URL, moviesdrive_default;
 var init_moviesdrive = __esm({
   "src/moviesdrive/index.js"() {
@@ -2046,7 +2132,7 @@ var init_moviesdrive = __esm({
     import_domains3 = __toESM(require_domains());
     import_metadata = __toESM(require_metadata());
     DOMAINS_URL = import_domains3.default.PHISHER_DOMAINS;
-    moviesdrive_default = { discoverCandidates, resolveCandidate, getStreams };
+    moviesdrive_default = { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };
   }
 });
 
@@ -2440,14 +2526,49 @@ var require_fourkHDhub = __commonJS({
         }
       });
     }
-    function getStreams3(tmdbId, mediaType, season = 1, episode = 1) {
+    function getStreamsLocal2(tmdbId, mediaType, season = 1, episode = 1) {
       return __async(this, null, function* () {
         const candidates = yield discoverCandidates2(tmdbId, mediaType, season, episode);
         const resolved = yield mapConcurrent3(candidates, 4, resolveCandidate2);
         return uniqueExactStreams3(resolved.flat().filter(Boolean));
       });
     }
-    module2.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreams: getStreams3 };
+    function fetchWorkerStreams2(tmdbId, mediaType, season, episode) {
+      return __async(this, null, function* () {
+        var _a;
+        try {
+          const query = new URLSearchParams({
+            tmdbId: String(tmdbId),
+            type: mediaType,
+            season: String(season || 1),
+            episode: String(episode || 1),
+            providers: "4khdhub",
+            timeout: "30000"
+          });
+          const response = yield fetch(`${DOMAINS5.WORKER}/streams?${query.toString()}`, { headers: { Accept: "application/json" } });
+          if (!response.ok)
+            return null;
+          const data = yield response.json();
+          const state = (_a = data == null ? void 0 : data.providers) == null ? void 0 : _a["4khdhub"];
+          if (!(data == null ? void 0 : data.ok) || (state == null ? void 0 : state.status) !== "success")
+            return null;
+          const streams = (Array.isArray(data.directStreams) ? data.directStreams : []).filter((stream) => String((stream == null ? void 0 : stream.provider) || "").toLowerCase() === "4khdhub");
+          return streams.length ? streams : null;
+        } catch (_) {
+          return null;
+        }
+      });
+    }
+    function getStreams3(tmdbId, mediaType, season = 1, episode = 1) {
+      return __async(this, null, function* () {
+        const type = mediaType === "tv" ? "tv" : "movie";
+        if (!tmdbId || type === "tv" && (!season || !episode))
+          return [];
+        const workerStreams = yield fetchWorkerStreams2(tmdbId, type, season, episode);
+        return workerStreams ? uniqueExactStreams3(workerStreams) : getStreamsLocal2(tmdbId, type, season, episode);
+      });
+    }
+    module2.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreamsLocal: getStreamsLocal2, fetchWorkerStreams: fetchWorkerStreams2, getStreams: getStreams3 };
   }
 });
 
@@ -3057,14 +3178,49 @@ var require_hdhub4u = __commonJS({
         }
       });
     }
-    function getStreams3(tmdbId, mediaType, season = 1, episode = 1) {
+    function getStreamsLocal2(tmdbId, mediaType, season = 1, episode = 1) {
       return __async(this, null, function* () {
         const candidates = yield discoverCandidates2(tmdbId, mediaType, season, episode);
         const downloadCandidates = candidates.filter((candidate2) => candidate2.resolverType !== "watch");
         return uniqueExactStreams3((yield mapConcurrent3(downloadCandidates, 4, resolveCandidate2)).flat().filter(Boolean));
       });
     }
-    module2.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreams: getStreams3 };
+    function fetchWorkerStreams2(tmdbId, mediaType, season, episode) {
+      return __async(this, null, function* () {
+        var _a;
+        try {
+          const query = new URLSearchParams({
+            tmdbId: String(tmdbId),
+            type: mediaType,
+            season: String(season || 1),
+            episode: String(episode || 1),
+            providers: "hdhub4u",
+            timeout: "40000"
+          });
+          const response = yield fetch(`${DOMAINS5.WORKER}/streams?${query.toString()}`, { headers: { Accept: "application/json" } });
+          if (!response.ok)
+            return null;
+          const data = yield response.json();
+          const state = (_a = data == null ? void 0 : data.providers) == null ? void 0 : _a.hdhub4u;
+          if (!(data == null ? void 0 : data.ok) || (state == null ? void 0 : state.status) !== "success")
+            return null;
+          const streams = (Array.isArray(data.directStreams) ? data.directStreams : []).filter((stream) => String((stream == null ? void 0 : stream.provider) || "").toLowerCase() === "hdhub4u");
+          return streams.length ? streams : null;
+        } catch (_) {
+          return null;
+        }
+      });
+    }
+    function getStreams3(tmdbId, mediaType, season = 1, episode = 1) {
+      return __async(this, null, function* () {
+        const type = mediaType === "tv" ? "tv" : "movie";
+        if (!tmdbId || type === "tv" && (!season || !episode))
+          return [];
+        const workerStreams = yield fetchWorkerStreams2(tmdbId, type, season, episode);
+        return workerStreams ? uniqueExactStreams3(workerStreams) : getStreamsLocal2(tmdbId, type, season, episode);
+      });
+    }
+    module2.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreamsLocal: getStreamsLocal2, fetchWorkerStreams: fetchWorkerStreams2, getStreams: getStreams3 };
   }
 });
 

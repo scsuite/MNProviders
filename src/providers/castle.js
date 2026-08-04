@@ -43,6 +43,7 @@ var __async = (__this, __arguments, generator) => {
 // src/castle/constants.js
 var TMDB_API_KEY = "439c478a771f35c05022f9feabcca01c";
 var DOMAIN_CONFIG = require("../config/domains");
+var sharedMetadata = require("../shared/metadata");
 var TMDB_BASE_URL = DOMAIN_CONFIG.TMDB_API;
 var CASTLE_BASE = DOMAIN_CONFIG.CASTLE_API;
 var PKG = "com.external.castle";
@@ -114,17 +115,12 @@ function extractDataBlock(obj) {
 // src/castle/tmdb.js
 function getTMDBDetails(tmdbId, mediaType) {
   return __async(this, null, function* () {
-    const endpoint = mediaType === "tv" ? "tv" : "movie";
-    const url = `${TMDB_BASE_URL}/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&append_to_response=external_ids`;
-    const response = yield makeRequest(url);
-    const data = yield response.json();
-    const title = mediaType === "tv" ? data.name : data.title;
-    const releaseDate = mediaType === "tv" ? data.first_air_date : data.release_date;
-    const year = releaseDate ? parseInt(releaseDate.split("-")[0]) : null;
+    const data = yield sharedMetadata.getMetadata(tmdbId, mediaType);
+    if (!data || !data.title) throw new Error(`TMDB metadata not found for ${tmdbId}`);
     return {
-      title,
-      year,
-      tmdbId
+      title: data.title,
+      year: data.year,
+      tmdbId: data.tmdbId || tmdbId
     };
   });
 }
