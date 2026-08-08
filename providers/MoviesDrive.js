@@ -721,8 +721,6 @@ function extractHubCloud(url, referer) {
         const text = $(element).text().toLowerCase();
         if (!link || !/(download file|download\s*\[server|fsl|buzzserver|pixeldra|pixelserver|pixel server|s3 server|mega server|pdl server)/i.test(text))
           return null;
-        if (/workers\.dev/i.test(link) && /download file/i.test(text))
-          return null;
         return { link: absoluteUrl(link, pageUrl), text };
       }).get().filter(Boolean);
       const streams = yield Promise.all(buttons.map((button) => __async(this, null, function* () {

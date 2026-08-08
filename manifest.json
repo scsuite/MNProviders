@@ -1,6 +1,6 @@
 {
   "name": "MNProviders",
-  "version": "1.0.64",
+  "version": "1.0.65",
   "description": "Independent device-first Nuvio providers for Mobile, Desktop and TV",
   "scrapers": [
     {
@@ -32,13 +32,13 @@
       "id": "MoviesDrive",
       "name": "MoviesDrive",
       "description": "Independent MoviesDrive provider with HubCloud and Phisher-style GDFlix extraction",
-      "version": "2.1.2",
+      "version": "2.1.3",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/MoviesDrive.js?v=212",
+      "filename": "providers/MoviesDrive.js?v=213",
       "source": "src/moviesdrive/index.js",
       "enabled": true,
       "formats": [
@@ -101,10 +101,10 @@
       "id": "HDHub4u",
       "name": "HDHub4u",
       "description": "Independent HDHub4u provider with Drive, Instant and protected redirect routes",
-      "version": "1.1.3",
+      "version": "1.1.4",
       "author": "Phisher; Nuvio compatibility port by scsuite",
       "supportedTypes": ["movie", "tv"],
-      "filename": "providers/HDHub4u.js?v=113",
+      "filename": "providers/HDHub4u.js?v=114",
       "source": "src/providers/hdhub4u.js",
       "enabled": true,
       "formats": ["hls", "mkv", "mp4"],

@@ -96,7 +96,7 @@ async function search(info, base, mediaType, season) {
   return `${base}${parsed.pathname}${parsed.search}`;
 }
 
-function candidate(url, label, referer) {
+function candidate(url, label, referer, extra = {}) {
   let host = '';
   try { host = new URL(url).hostname.toLowerCase(); } catch (_) { return null; }
   const resolverType = host.includes('hubdrive') ? 'hubdrive'
@@ -107,7 +107,7 @@ function candidate(url, label, referer) {
   return {
     provider: 'HDHub4u', source: resolverType === 'hubcdn' ? 'Instant' : resolverType === 'watch' ? 'Watch' : resolverType === 'protector' ? 'Protected Link' : 'Drive',
     quality: qualityFrom(label), size: sizeFrom(label), url, label, referer,
-    headers: { ...HEADERS, Referer: referer }, resolverType
+    headers: { ...HEADERS, Referer: referer }, resolverType, ...extra
   };
 }
 
@@ -143,6 +143,19 @@ function parseEpisode($, pageUrl, episode) {
       const item = candidate(url, `${text} ${link.text()}`, pageUrl);
       if (item) output.push(item);
     });
+  });
+
+  // Quality packs are separate protected archive links above the individual
+  // E01/E02 blocks. Preserve every advertised quality, then select only the
+  // requested episode when the archive is expanded in resolveProtected().
+  $('a[href]').each((_, anchor) => {
+    const link = $(anchor);
+    const label = clean(link.text());
+    if (!/\b(?:2160p?|4k|1080p?|720p?|480p?)\b/i.test(label)) return;
+    if (!/\b(?:pack|hevc|x26[45]|\d+(?:\.\d+)?\s*(?:GB|MB))\b/i.test(label)) return;
+    const url = absolute(link.attr('href'), pageUrl);
+    const item = candidate(url, label, pageUrl, { requestedEpisode: wantedEpisode, episodePack: true });
+    if (item?.resolverType === 'protector') output.push(item);
   });
   return output;
 }
@@ -240,7 +253,12 @@ async function resolveProtected(item) {
   const $ = cheerio.load(landingHtml);
   const routes = [];
   $('a[href]').each((_, anchor) => {
-    const url = absolute($(anchor).attr('href'), landingResponse.url);
+    const node = $(anchor);
+    const url = absolute(node.attr('href'), landingResponse.url);
+    if (item.episodePack && item.requestedEpisode) {
+      const episodePattern = new RegExp(`(?:episode|ep|e)\\s*0?${Number(item.requestedEpisode)}(?:\\D|$)`, 'i');
+      if (!episodePattern.test(`${clean(node.text())} ${url}`)) return;
+    }
     if (/hubcloud|hubdrive|hubcdn/i.test(url)) routes.push(url);
   });
   if (!routes.length && /hubcloud|hubdrive|hubcdn/i.test(landingResponse.url)) routes.push(landingResponse.url);

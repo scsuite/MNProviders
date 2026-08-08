@@ -678,8 +678,6 @@ function extractHubCloud(url, referer) {
         const text = $(element).text().toLowerCase();
         if (!link || !/(download file|download\s*\[server|fsl|buzzserver|pixeldra|pixelserver|pixel server|s3 server|mega server|pdl server)/i.test(text))
           return null;
-        if (/workers\.dev/i.test(link) && /download file/i.test(text))
-          return null;
         return { link: absoluteUrl(link, pageUrl), text };
       }).get().filter(Boolean);
       const streams = yield Promise.all(buttons.map((button) => __async(this, null, function* () {
@@ -1330,7 +1328,7 @@ function search2(info, base, mediaType, season) {
     return `${base}${parsed.pathname}${parsed.search}`;
   });
 }
-function candidate(url, label, referer) {
+function candidate(url, label, referer, extra = {}) {
   let host = "";
   try {
     host = new URL(url).hostname.toLowerCase();
@@ -1340,7 +1338,7 @@ function candidate(url, label, referer) {
   const resolverType = host.includes("hubdrive") ? "hubdrive" : host.includes("hubcdn") ? "hubcdn" : host.includes("gadgetsweb") || host.includes("greenmountmotors") ? "protector" : host.includes("hubstream") ? "watch" : null;
   if (!resolverType)
     return null;
-  return {
+  return __spreadValues({
     provider: "HDHub4u",
     source: resolverType === "hubcdn" ? "Instant" : resolverType === "watch" ? "Watch" : resolverType === "protector" ? "Protected Link" : "Drive",
     quality: qualityFrom(label),
@@ -1350,7 +1348,7 @@ function candidate(url, label, referer) {
     referer,
     headers: __spreadProps(__spreadValues({}, HEADERS2), { Referer: referer }),
     resolverType
-  };
+  }, extra);
 }
 function parseMovie($, pageUrl) {
   const output = [];
@@ -1382,6 +1380,18 @@ function parseEpisode($, pageUrl, episode) {
       if (item)
         output.push(item);
     });
+  });
+  $("a[href]").each((_, anchor) => {
+    const link = $(anchor);
+    const label = clean(link.text());
+    if (!/\b(?:2160p?|4k|1080p?|720p?|480p?)\b/i.test(label))
+      return;
+    if (!/\b(?:pack|hevc|x26[45]|\d+(?:\.\d+)?\s*(?:GB|MB))\b/i.test(label))
+      return;
+    const url = absolute(link.attr("href"), pageUrl);
+    const item = candidate(url, label, pageUrl, { requestedEpisode: wantedEpisode, episodePack: true });
+    if ((item == null ? void 0 : item.resolverType) === "protector")
+      output.push(item);
   });
   return output;
 }
@@ -1510,7 +1520,13 @@ function resolveProtected(item) {
     const $ = cheerio3.load(landingHtml);
     const routes = [];
     $("a[href]").each((_, anchor) => {
-      const url = absolute($(anchor).attr("href"), landingResponse.url);
+      const node = $(anchor);
+      const url = absolute(node.attr("href"), landingResponse.url);
+      if (item.episodePack && item.requestedEpisode) {
+        const episodePattern = new RegExp(`(?:episode|ep|e)\\s*0?${Number(item.requestedEpisode)}(?:\\D|$)`, "i");
+        if (!episodePattern.test(`${clean(node.text())} ${url}`))
+          return;
+      }
       if (/hubcloud|hubdrive|hubcdn/i.test(url))
         routes.push(url);
     });

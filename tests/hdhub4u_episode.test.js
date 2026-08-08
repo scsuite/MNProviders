@@ -4,6 +4,10 @@ const { parseEpisode } = require('../src/providers/hdhub4u');
 
 const $ = cheerio.load(`
   <main>
+    <p><a href="https://greenmountmotors.com/?id=adventure">Adventure</a></p>
+    <p><a href="https://greenmountmotors.com/?id=480-pack">480p Pack [2.1GB]</a></p>
+    <p><a href="https://greenmountmotors.com/?id=720-pack">720p 10Bit HEVC [3.5GB]</a></p>
+    <p><a href="https://greenmountmotors.com/?id=1080-pack">1080p 10Bit HEVC [8.3GB]</a></p>
     <p>E02 –
       <a href="https://hubdrive.tips/file/episode-2">Drive</a>
       <a href="https://hubcdn.sbs/file/episode-2">Instant</a>
@@ -21,13 +25,18 @@ assert.deepStrictEqual(
   [
     'https://hubdrive.tips/file/episode-2',
     'https://hubcdn.sbs/file/episode-2',
-    'https://greenmountmotors.com/?id=episode-2'
+    'https://greenmountmotors.com/?id=episode-2',
+    'https://greenmountmotors.com/?id=480-pack',
+    'https://greenmountmotors.com/?id=720-pack',
+    'https://greenmountmotors.com/?id=1080-pack'
   ],
   'HDHub4u must extract only links inside the requested episode marker block'
 );
 assert.deepStrictEqual(
   candidates.map(candidate => candidate.resolverType),
-  ['hubdrive', 'hubcdn', 'protector']
+  ['hubdrive', 'hubcdn', 'protector', 'protector', 'protector', 'protector']
 );
+assert.strictEqual(candidates.filter(candidate => candidate.episodePack).length, 3);
+assert(candidates.filter(candidate => candidate.episodePack).every(candidate => candidate.requestedEpisode === 2));
 
-console.log('PASS: HDHub4u extracts exact episode links without mixing season packs or later episodes');
+console.log('PASS: HDHub4u extracts exact episode links from inline and quality-pack routes without mixing other episodes');
