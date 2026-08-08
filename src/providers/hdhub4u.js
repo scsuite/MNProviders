@@ -126,16 +126,17 @@ function parseMovie($, pageUrl) {
 function parseEpisode($, pageUrl, episode) {
   const output = [];
   const wantedEpisode = Number(episode);
-  let currentEpisode = null;
-  $('h3,h4,h5,h6').each((_, heading) => {
-    const node = $(heading);
+  $('h2,h3,h4,h5,h6,p').each((_, block) => {
+    const node = $(block);
     const text = clean(node.text());
     const marker = text.match(/(?:EPiSODE|Episode|EP|E)\s*0?(\d+)(?:\D|$)/i);
-    if (marker) {
-      currentEpisode = Number(marker[1]);
-      return;
-    }
-    if (currentEpisode !== wantedEpisode) return;
+    if (!marker || Number(marker[1]) !== wantedEpisode) return;
+
+    // HDHub4u currently places Drive/Instant/Watch anchors inside the same
+    // paragraph as the E01/E02 marker. The previous parser returned as soon
+    // as it saw that marker, so every TV episode incorrectly produced zero
+    // candidates. Keep extraction scoped to the exact marker block so season
+    // packs and links belonging to later episodes are not mixed in.
     node.find('a[href]').each((__, anchor) => {
       const link = $(anchor);
       const url = absolute(link.attr('href'), pageUrl);
@@ -301,8 +302,7 @@ async function resolveCandidate(item) {
 }
 async function getStreamsLocal(tmdbId, mediaType, season = 1, episode = 1) {
   const candidates = await discoverCandidates(tmdbId, mediaType, season, episode);
-  const downloadCandidates = candidates.filter(candidate => candidate.resolverType !== 'watch');
-  return uniqueExactStreams((await mapConcurrent(downloadCandidates, 4, resolveCandidate)).flat().filter(Boolean));
+  return uniqueExactStreams((await mapConcurrent(candidates, 4, resolveCandidate)).flat().filter(Boolean));
 }
 
 async function fetchWorkerStreams(tmdbId, mediaType, season, episode) {
@@ -329,4 +329,4 @@ async function getStreams(tmdbId, mediaType, season = 1, episode = 1) {
   return getStreamsLocal(tmdbId, type, season, episode);
 }
 
-module.exports = { discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };
+module.exports = { parseEpisode, discoverCandidates, resolveCandidate, getStreamsLocal, fetchWorkerStreams, getStreams };

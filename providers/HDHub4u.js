@@ -1369,16 +1369,11 @@ function parseMovie($, pageUrl) {
 function parseEpisode($, pageUrl, episode) {
   const output = [];
   const wantedEpisode = Number(episode);
-  let currentEpisode = null;
-  $("h3,h4,h5,h6").each((_, heading) => {
-    const node = $(heading);
+  $("h2,h3,h4,h5,h6,p").each((_, block) => {
+    const node = $(block);
     const text = clean(node.text());
     const marker = text.match(/(?:EPiSODE|Episode|EP|E)\s*0?(\d+)(?:\D|$)/i);
-    if (marker) {
-      currentEpisode = Number(marker[1]);
-      return;
-    }
-    if (currentEpisode !== wantedEpisode)
+    if (!marker || Number(marker[1]) !== wantedEpisode)
       return;
     node.find("a[href]").each((__, anchor) => {
       const link = $(anchor);
@@ -1612,8 +1607,7 @@ function resolveCandidate2(item) {
 function getStreamsLocal2(tmdbId, mediaType, season = 1, episode = 1) {
   return __async(this, null, function* () {
     const candidates = yield discoverCandidates2(tmdbId, mediaType, season, episode);
-    const downloadCandidates = candidates.filter((candidate2) => candidate2.resolverType !== "watch");
-    return uniqueExactStreams2((yield mapConcurrent2(downloadCandidates, 4, resolveCandidate2)).flat().filter(Boolean));
+    return uniqueExactStreams2((yield mapConcurrent2(candidates, 4, resolveCandidate2)).flat().filter(Boolean));
   });
 }
 function fetchWorkerStreams2(tmdbId, mediaType, season, episode) {
@@ -1650,4 +1644,4 @@ function getStreams2(tmdbId, mediaType, season = 1, episode = 1) {
     return getStreamsLocal2(tmdbId, type, season, episode);
   });
 }
-module.exports = { discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreamsLocal: getStreamsLocal2, fetchWorkerStreams: fetchWorkerStreams2, getStreams: getStreams2 };
+module.exports = { parseEpisode, discoverCandidates: discoverCandidates2, resolveCandidate: resolveCandidate2, getStreamsLocal: getStreamsLocal2, fetchWorkerStreams: fetchWorkerStreams2, getStreams: getStreams2 };
